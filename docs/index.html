@@ -723,6 +723,56 @@
       white-space: nowrap;
     }
 
+    .hero-channels {
+      margin-top: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+    }
+    .hero-ch {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      color: #d1d5db;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    a.hero-ch:hover {
+      border-color: var(--border-strong);
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+    }
+    .hero-ch.muted { color: var(--muted); opacity: 0.72; }
+    .hero-ch-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #4ade80;
+    }
+    .channel-card.live {
+      background: var(--bg-card);
+      border: 1px solid rgba(74, 222, 128, 0.32);
+      opacity: 1;
+      cursor: default;
+      user-select: text;
+    }
+    .channel-copy-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .channel-copy-row .copy-btn {
+      padding: 2px 8px;
+      font-size: 0.74rem;
+    }
+
     /* ---- GitHub Download Card (under Coming Soon channels) ---- */
     .gh-dl-card {
       margin-top: 14px;
@@ -917,6 +967,12 @@
             <span id="dl-label">Download from GitHub</span>
           </a>
           <a class="btn btn-secondary" href="https://github.com/dstarikov/NubMouse">View Source</a>
+          <a class="btn btn-secondary" href="#audit">Audit &amp; Build</a>
+        </div>
+        <div class="hero-channels">
+          <a class="hero-ch" href="#install"><span class="hero-ch-dot"></span>Scoop: available now</a>
+          <a class="hero-ch muted" href="#install">Microsoft Store · in review</a>
+          <a class="hero-ch muted" href="https://github.com/microsoft/winget-pkgs/pull/489404">Winget · in review</a>
         </div>
         <a class="audit-link" href="#audit">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
@@ -1075,27 +1131,30 @@
           </div>
         </div>
 
-        <div class="channels-grid" aria-label="Upcoming installation channels">
-          <div class="channel-card" aria-disabled="true" title="Microsoft Store MSIX coming soon">
+        <div class="channels-grid" aria-label="Package manager installation channels">
+          <div class="channel-card" aria-disabled="true" title="Microsoft Store MSIX submitted for certification">
             <div class="channel-head">
               <span class="channel-name">Microsoft Store</span>
-              <span class="coming-badge">Coming soon</span>
+              <span class="coming-badge">In review</span>
             </div>
             <div class="channel-sub" style="font-family: inherit;">Signed MSIX · No SmartScreen</div>
           </div>
-          <div class="channel-card" aria-disabled="true" title="Winget package coming soon">
+          <div class="channel-card" aria-disabled="true" title="Winget PR #489404 submitted">
             <div class="channel-head">
               <span class="channel-name">Winget</span>
-              <span class="coming-badge">Coming soon</span>
+              <span class="coming-badge">In review</span>
             </div>
             <div class="channel-sub">winget install dstarikov.NubMouse</div>
           </div>
-          <div class="channel-card" aria-disabled="true" title="Scoop package coming soon">
+          <div class="channel-card live" title="Install via Scoop bucket">
             <div class="channel-head">
               <span class="channel-name">Scoop</span>
-              <span class="coming-badge">Coming soon</span>
+              <span class="gh-dl-live">Available</span>
             </div>
-            <div class="channel-sub">scoop install nubmouse</div>
+            <div class="channel-copy-row">
+              <div class="channel-sub" id="scoop-cmd" title="scoop bucket add dstarikov https://github.com/dstarikov/scoop-bucket; scoop install nubmouse">scoop bucket add dstarikov https://github.com/dstarikov/scoop-bucket; scoop install nubmouse</div>
+              <button class="copy-btn" data-copy="scoop-cmd">Copy</button>
+            </div>
           </div>
         </div>
 
