@@ -72,7 +72,8 @@ namespace NubMouse
 
         // Press state. Written only on the hook thread; pressId is also read by the output thread.
         bool held, scrolling, driverScrolled, passthroughHeld, rawConfirmed, usingRawDeltas, wheelDragging, keyDragging;
-        string activePressDeviceKey;
+        string activePressDeviceKey, lastRawMiddleDownKey;
+        int lastRawMiddleDownTick;
         int[] wheelDragShortcut, keyDragShortcut;
         UIntPtr wheelDragTimer, keyDragTimer;
         N.POINT anchor;
@@ -396,20 +397,25 @@ namespace NubMouse
                 (raw.mouse.lLastX != 0 || raw.mouse.lLastY != 0 || raw.mouse.usButtonFlags != 0))
                 lastActiveDeviceKey = devKey;
 
-            if ((raw.mouse.usButtonFlags & N.RI_MOUSE_MIDDLE_BUTTON_DOWN) != 0 && held && !rawConfirmed)
+            if ((raw.mouse.usButtonFlags & N.RI_MOUSE_MIDDLE_BUTTON_DOWN) != 0)
             {
-                rawConfirmed = true;
-                activePressDeviceKey = devKey;
-                if (ModeFor(devKey) != DeviceMode.Full || !ActiveCfg(devKey).MiddleButtonScroll)
+                lastRawMiddleDownKey = devKey;
+                lastRawMiddleDownTick = Environment.TickCount;
+                if (held && !rawConfirmed)
                 {
-                    // Middle button came from an ignored or drag-only device (e.g. external mouse or
-                    // TEX Shura): replay the press so the user gets native middle-click / middle-drag.
-                    held = false;
-                    passthroughHeld = true;
-                    NotifyVisual(ScrollMode.None);
-                    output.Add(new Work { Kind = Kind.RawMiddleDown });
-                    DebugLog.Write("press #{0}: middle down from {1} ({2}): passed through", pressId, devKey ?? "(unknown)", ModeFor(devKey));
-                    return;
+                    rawConfirmed = true;
+                    activePressDeviceKey = devKey;
+                    if (ModeFor(devKey) != DeviceMode.Full || !ActiveCfg(devKey).MiddleButtonScroll)
+                    {
+                        // Middle button came from an ignored or drag-only device (e.g. external mouse or
+                        // TEX Shura): replay the press so the user gets native middle-click / middle-drag.
+                        held = false;
+                        passthroughHeld = true;
+                        NotifyVisual(ScrollMode.None);
+                        output.Add(new Work { Kind = Kind.RawMiddleDown });
+                        DebugLog.Write("press #{0}: middle down from {1} ({2}): passed through", pressId, devKey ?? "(unknown)", ModeFor(devKey));
+                        return;
+                    }
                 }
             }
 
@@ -446,10 +452,16 @@ namespace NubMouse
             switch (msg)
             {
                 case N.WM_MBUTTONDOWN:
-                    var downKey = lastActiveDeviceKey;
-                    // When middle-button scrolling is turned off (e.g. TEX Shura using only 3D/CAD
-                    // drag shortcuts), leave physical middle clicks completely untouched.
-                    if (!ActiveCfg(downKey).MiddleButtonScroll) return false;
+                    var downKey = (lastRawMiddleDownKey != null && unchecked(Environment.TickCount - lastRawMiddleDownTick) <= 50)
+                        ? lastRawMiddleDownKey : lastActiveDeviceKey;
+                    // Leave ignored devices, DragOnly devices, and devices with MiddleButtonScroll off
+                    // completely untouched (pass physical middle-click/drag straight through).
+                    if (ModeFor(downKey) != DeviceMode.Full || !ActiveCfg(downKey).MiddleButtonScroll)
+                    {
+                        passthroughHeld = true;
+                        DebugLog.Write("middle down from {0} ({1}): passed through", downKey ?? "(unknown)", ModeFor(downKey));
+                        return false;
+                    }
                     // Holding all the keys of any native-drag shortcut passes a middle-button drag straight through.
                     int[] shortcut = HeldShortcut(DragShortcutsFor(downKey));
                     if (shortcut != null)

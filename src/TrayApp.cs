@@ -49,6 +49,13 @@ namespace NubMouse
         public TrayApp(Settings settings)
         {
             this.settings = settings;
+            if (!settings.DevicesInitialized && string.IsNullOrEmpty(settings.DeviceModes) && string.IsNullOrEmpty(settings.DeviceFilter))
+            {
+                string rec = RawInputDevices.RecommendedDeviceModes();
+                if (!string.IsNullOrEmpty(rec)) settings.DeviceModes = rec;
+                settings.DevicesInitialized = true;
+                settings.Save();
+            }
             invoker = new Control();
             invoker.CreateControl();
             PointerHider.RecoverAfterCrash();

@@ -222,6 +222,7 @@ namespace NubMouse
                 }
             });
             DragKeys(list);
+            Note(list, "Tip: Ctrl, Alt, and Shift are also seen by the target app (e.g. Shift+MMB pans and Ctrl+MMB zooms in Blender). For unmodified middle-drag (like Blender Orbit), use the app's \"Emulate 3 Button Mouse\" mode or bind an unused key (such as CapsLock).");
             list.Controls.Add(new Panel { Height = 1, Width = S(CardWidth - 36), BackColor = CardBorder, Margin = new Padding(0, S(10), 0, S(10)) });
             list.Controls.Add(new Label
             {
@@ -796,6 +797,7 @@ namespace NubMouse
                     else map[key] = mode;
                     s.DeviceModes = Settings.FormatDeviceModes(map);
                     s.DeviceFilter = "";   // superseded by per-device modes
+                    s.DevicesInitialized = true;
                 });
             };
 

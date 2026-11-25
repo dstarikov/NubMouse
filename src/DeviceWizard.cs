@@ -156,7 +156,9 @@ namespace NubMouse
                 DeviceMode initial;
                 if (useSuggestions)
                 {
-                    initial = (!anyPointingStick && dev.SuggestedMode == DeviceMode.Ignore) ? DeviceMode.Full : dev.SuggestedMode;
+                    if (dev.SuggestedMode == DeviceMode.DragOnly) initial = DeviceMode.DragOnly;
+                    else if (dev.LikelyTrackPoint) initial = DeviceMode.Full;
+                    else initial = (anyPointingStick || dev.SuggestedMode == DeviceMode.Ignore) ? DeviceMode.Ignore : DeviceMode.Full;
                 }
                 else if (!existingModes.TryGetValue(dev.Key, out initial))
                 {
@@ -246,6 +248,7 @@ namespace NubMouse
             {
                 s.DeviceModes = formatted;
                 s.DeviceFilter = "";
+                s.DevicesInitialized = true;
                 s.MiddleButtonScroll = true;
                 s.AxisLock = true;
                 s.KeyMoveToDrag = false;

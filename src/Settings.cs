@@ -50,6 +50,7 @@ namespace NubMouse
         public string WheelDragKeys = "";    // empty = same shortcuts as DragKeys; otherwise separate shortcut(s) for WheelToDrag
         public string DeviceFilter = "";     // empty = all pointing devices; comma-separated device keys (e.g. "17EF:6009")
         public string DeviceModes = "";      // per-device overrides: "04D9:0532=dragonly;046D:C547=ignore"
+        public bool DevicesInitialized;      // true once first-run device auto-detection or user device config has run
         public Dictionary<string, Settings> DeviceProfiles = new Dictionary<string, Settings>(StringComparer.OrdinalIgnoreCase);
 
         // Stickiness: how much more the other axis must move (recently) than the locked one to
@@ -323,6 +324,7 @@ namespace NubMouse
                     if (wheelKeys != null && ParseShortcuts(wheelKeys) != null) s.WheelDragKeys = wheelKeys;
                     s.DeviceFilter = (k.GetValue("DeviceFilter") as string) ?? "";
                     s.DeviceModes = (k.GetValue("DeviceModes") as string) ?? "";
+                    s.DevicesInitialized = ReadBool(k, "DevicesInitialized", !string.IsNullOrEmpty(s.DeviceModes) || !string.IsNullOrEmpty(s.DeviceFilter));
                     s.CancelAutoscroll = ReadBool(k, "CancelAutoscroll", s.CancelAutoscroll);
                     s.HideTrayIcon = ReadBool(k, "HideTrayIcon", s.HideTrayIcon);
                     s.DriverWarningShown = ReadBool(k, "DriverWarningShown", s.DriverWarningShown);
@@ -449,6 +451,7 @@ namespace NubMouse
                     k.DeleteValue("DragKeyVk", false);
                     k.SetValue("DeviceFilter", DeviceFilter ?? "", RegistryValueKind.String);
                     k.SetValue("DeviceModes", DeviceModes ?? "", RegistryValueKind.String);
+                    k.SetValue("DevicesInitialized", DevicesInitialized ? 1 : 0, RegistryValueKind.DWord);
                     k.SetValue("CancelAutoscroll", CancelAutoscroll ? 1 : 0, RegistryValueKind.DWord);
                     k.SetValue("HideTrayIcon", HideTrayIcon ? 1 : 0, RegistryValueKind.DWord);
                     k.SetValue("DriverWarningShown", DriverWarningShown ? 1 : 0, RegistryValueKind.DWord);
@@ -544,6 +547,7 @@ namespace NubMouse
                             break;
                         case "devicefilter": if (target == s) s.DeviceFilter = val; break;
                         case "devicemodes": if (target == s) s.DeviceModes = val; break;
+                        case "devicesinitialized": if (target == s) s.DevicesInitialized = ParseBool(val, s.DevicesInitialized); break;
                         case "cancelautoscroll": target.CancelAutoscroll = ParseBool(val, target.CancelAutoscroll); break;
                         case "hidetrayicon": if (target == s) s.HideTrayIcon = ParseBool(val, s.HideTrayIcon); break;
                         case "driverwarningshown": if (target == s) s.DriverWarningShown = ParseBool(val, s.DriverWarningShown); break;
@@ -592,6 +596,7 @@ namespace NubMouse
                 AppendTuningIni(sb, this);
                 sb.AppendLine("DeviceFilter=" + (DeviceFilter ?? ""));
                 sb.AppendLine("DeviceModes=" + (DeviceModes ?? ""));
+                sb.AppendLine("DevicesInitialized=" + (DevicesInitialized ? 1 : 0));
                 sb.AppendLine("HideTrayIcon=" + (HideTrayIcon ? 1 : 0));
                 sb.AppendLine("DriverWarningShown=" + (DriverWarningShown ? 1 : 0));
                 sb.AppendLine("SwitchDriver=" + (SwitchDriver ? 1 : 0));

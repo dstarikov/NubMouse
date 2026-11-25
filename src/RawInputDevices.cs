@@ -146,6 +146,25 @@ namespace NubMouse
             return result;
         }
 
+        /// Recommended per-device modes for the currently connected pointing devices:
+        /// - Known TEX / firmware-scroll keyboards -> DragOnly
+        /// - Known TrackPoints / pointing sticks -> Full
+        /// - External, virtual, and (when a known TrackPoint/TEX is present) unknown devices -> Ignore
+        public static string RecommendedDeviceModes()
+        {
+            var devices = ListMouseDevices();
+            bool anyStick = false;
+            foreach (var d in devices) if (d.LikelyTrackPoint) { anyStick = true; break; }
+            var map = new Dictionary<string, DeviceMode>(StringComparer.OrdinalIgnoreCase);
+            foreach (var d in devices)
+            {
+                if (d.SuggestedMode == DeviceMode.DragOnly) map[d.Key] = DeviceMode.DragOnly;
+                else if (d.LikelyTrackPoint) continue;   // Full
+                else if (anyStick || d.SuggestedMode == DeviceMode.Ignore) map[d.Key] = DeviceMode.Ignore;
+            }
+            return Settings.FormatDeviceModes(map);
+        }
+
         static bool IsLikelyExternalMouse(string key, string rawName, string friendly)
         {
             string combined = ((rawName ?? "") + " " + (friendly ?? "")).ToLowerInvariant();

@@ -1209,8 +1209,9 @@
             <p>3D and CAD apps (Blender, Fusion, SolidWorks, Rhino, FreeCAD, Maya) orbit and pan viewports by holding and dragging the middle mouse button.</p>
             <ul>
               <li><strong>ThinkPads / non-TEX TrackPoints:</strong> Native drag is disabled by default so your modifier keys stay free. Pick a quick key (<code>Alt</code>, <code>Ctrl</code>, <code>Shift</code>), combo (<code>Ctrl+Alt</code>, <code>Alt+Shift</code>, <code>Ctrl+Shift</code>), or custom shortcut under <strong>Settings → Scroll &amp; click → Native drag</strong>. Holding that shortcut while pressing the middle button passes a real middle-button drag straight through.</li>
-              <li><strong>TEX Shura / Shinobi:</strong> Enabled by default with <code>Ctrl+Alt</code> + moving the nub (no middle button needed) for smooth 360° viewport orbiting.</li>
+              <li><strong>TEX Shura / Shinobi:</strong> Enabled by default with <code>Ctrl+Alt</code> + moving the nub (no middle button needed) for smooth 360° viewport dragging.</li>
             </ul>
+            <p><strong>Note on modifier keys:</strong> Because NubMouse never installs a keyboard hook, <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code> are still seen by the 3D app (for example, Blender maps <code>Shift+MMB</code> to Pan and <code>Ctrl+MMB</code> to Zoom). For unmodified middle-drag like Blender Orbit, either enable the app's built-in <strong>Emulate 3 Button Mouse</strong> mode, or record an unused non-modifier key (such as <code>CapsLock</code>).</p>
           </div>
         </details>
 
