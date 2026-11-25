@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Hardware & Driver Compatibility Reports
+    url: https://github.com/dstarikov/NubMouse/discussions
+    about: Share your ThinkPad or pointing-stick keyboard model and how NubMouse works on it.

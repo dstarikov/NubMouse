@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.9.0.schema.json
+
+PackageIdentifier: dstarikov.NubMouse
+PackageVersion: 0.1.0
+InstallerType: exe
+Scope: user
+InstallModes:
+  - interactive
+  - silent
+InstallerSwitches:
+  Silent: --install --quiet
+  SilentWithProgress: --install --quiet
+UpgradeBehavior: install
+AppsAndFeaturesEntries:
+  - DisplayName: NubMouse
+    Publisher: dstarikov
+    ProductCode: NubMouse
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/dstarikov/NubMouse/releases/download/v0.1.0/NubMouse.exe
+    InstallerSha256: F86E7B1807465D9948D3900B08A8C33C207733219306AA8772577F1EA0E3B1C7
+  - Architecture: arm64
+    InstallerUrl: https://github.com/dstarikov/NubMouse/releases/download/v0.1.0/NubMouse.exe
+    InstallerSha256: F86E7B1807465D9948D3900B08A8C33C207733219306AA8772577F1EA0E3B1C7
+ManifestType: installer
+ManifestVersion: 1.9.0

@@ -1,0 +1,99 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Work out version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") { $v = "${{ github.ref_name }}" }
+          else { $v = "0.0.0-dev+" + "${{ github.sha }}".Substring(0, 7) }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Build
+        shell: pwsh
+        run: ./build.ps1 -Version "${{ steps.version.outputs.version }}" -OutDir dist
+
+      - name: Check the exe
+        shell: pwsh
+        run: |
+          $info = (Get-Item dist/NubMouse.exe).VersionInfo
+          "FileVersion:    $($info.FileVersion)"
+          "ProductVersion: $($info.ProductVersion)"
+
+      - name: Build MSIX packages (x64 + arm64)
+        shell: pwsh
+        env:
+          MSIX_IDENTITY_NAME: ${{ secrets.MSIX_IDENTITY_NAME }}
+          MSIX_PUBLISHER: ${{ secrets.MSIX_PUBLISHER }}
+          MSIX_PUBLISHER_DISPLAY_NAME: ${{ secrets.MSIX_PUBLISHER_DISPLAY_NAME }}
+        run: |
+          $ver = "${{ steps.version.outputs.version }}"
+          if ($ver -match '^0\.0\.0') { $ver = "0.0.1" }
+          $args = @{ Version = $ver; Arch = "all"; ExePath = "dist/NubMouse.exe"; OutDir = "dist" }
+          if ($env:MSIX_IDENTITY_NAME) { $args.IdentityName = $env:MSIX_IDENTITY_NAME }
+          if ($env:MSIX_PUBLISHER) { $args.Publisher = $env:MSIX_PUBLISHER }
+          if ($env:MSIX_PUBLISHER_DISPLAY_NAME) { $args.PublisherDisplayName = $env:MSIX_PUBLISHER_DISPLAY_NAME }
+          ./packaging/msix/build-msix.ps1 @args
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: NubMouse-${{ steps.version.outputs.version }}
+          path: |
+            dist/NubMouse.exe
+            dist/*.msix
+          if-no-files-found: error
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: NubMouse-${{ github.ref_name }}
+          path: dist
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $stage = "stage/NubMouse-$tag"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item dist/NubMouse.exe, README.md, CHANGELOG.md, LICENSE $stage
+          Compress-Archive -Path "$stage/*" -DestinationPath "dist/NubMouse-$tag.zip"
+          Push-Location dist
+          Get-ChildItem NubMouse.exe, "NubMouse-$tag.zip" | ForEach-Object {
+            "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), $_.Name
+          } | Set-Content -Encoding ascii SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+          Pop-Location
+
+      - name: Create release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $flags = @("--generate-notes", "--title", "NubMouse $tag")
+          if ($tag -match "-") { $flags += "--prerelease" }
+          gh release create $tag @flags `
+            dist/NubMouse.exe "dist/NubMouse-$tag.zip" dist/SHA256SUMS.txt

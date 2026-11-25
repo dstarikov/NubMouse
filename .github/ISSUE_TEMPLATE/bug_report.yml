@@ -1,0 +1,47 @@
+name: Bug report
+description: Report a bug or unexpected behavior in NubMouse
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting an issue! If you just want to share whether NubMouse works on your ThinkPad or pointing-stick keyboard, please post in **Compatibility Reports** under Discussions instead.
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Laptop or keyboard model
+      placeholder: e.g. ThinkPad T14 Gen 4, P16 Gen 3, TEX Shura
+    validations:
+      required: true
+
+  - type: input
+    id: driver
+    attributes:
+      label: TrackPoint / pointing-stick driver & Windows version
+      placeholder: e.g. ELAN TrackPoint 31.21.x on Windows 11 24H2 (x64)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: NubMouse version
+      placeholder: e.g. 0.1.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe what you expected to happen and what actually happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Debug log (optional, very helpful)
+      description: Run `NubMouse.exe debug`, reproduce the issue, then open **Open debug log** from the tray menu (or Settings → General) and paste relevant lines here. No keyboard input or window titles are logged.
+      render: text
