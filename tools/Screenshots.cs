@@ -97,16 +97,16 @@ namespace NubMouse.Tools
                     win.Refresh();
                     var r = WindowFrame(win);
                     r.Inflate(16, 16);
-                    Capture(r, win, 16, "settings-scroll.png");
-                    var genTab = FindControlByText(win, "General");
-                    if (genTab != null)
-                        typeof(Control).GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(genTab, new object[] { EventArgs.Empty });
+                    Capture(r, win, 16, "settings-general.png");
+                    var scrollTab = FindControlByText(win, "Scroll && click");
+                    if (scrollTab != null)
+                        typeof(Control).GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(scrollTab, new object[] { EventArgs.Empty });
                 }
                 else if (step == 4)
                 {
                     var r = WindowFrame(win);
                     r.Inflate(16, 16);
-                    Capture(r, win, 16, "settings-general.png");
+                    Capture(r, win, 16, "settings-scroll.png");
                     win.Close();
                     timer.Stop();
                     app.Dispose();

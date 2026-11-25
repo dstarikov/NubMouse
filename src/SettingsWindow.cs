@@ -41,6 +41,16 @@ namespace NubMouse
         readonly ToolTip tips = new ToolTip { AutoPopDelay = 20000 };
         readonly List<Action> loaders = new List<Action>();
         bool loading;
+        string activeProfileKey;                    // null = All devices (default), else device key for per-device profile
+
+        Settings Profile() { return activeProfileKey == null ? settings : settings.EffectiveProfileFor(activeProfileKey); }
+
+        void ChangeProfile(Action<Settings> edit)
+        {
+            string key = activeProfileKey;
+            if (key == null) change(edit);
+            else change(s => edit(s.GetOrCreateProfile(key)));
+        }
 
         // Click time limit slider: 2..20 = 200..2000 ms, the last stop = no limit (as in the tray menu).
         const int TimeoutMin = 2, TimeoutMax = 20, TimeoutNone = 21;
@@ -122,67 +132,95 @@ namespace NubMouse
             left.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             var cards = Page();
             var general = Page();
+            reset.Visible = false;
             cards.VisibleChanged += delegate { reset.Visible = cards.Visible; };   // it resets the tuning settings only
-            left.Controls.Add(Tabs(new[] { "Scroll && click", "General" }, new Control[] { cards, general }), 0, 0);
+            left.Controls.Add(Tabs(new[] { "General", "Scroll && click" }, new Control[] { general, cards }), 0, 0);
             var pages = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
-            pages.Controls.Add(general);
             pages.Controls.Add(cards);
+            pages.Controls.Add(general);
             left.Controls.Add(pages, 0, 1);
             body.Controls.Add(left, 0, 0);
+
+            BuildProfileCard(cards);
 
             var list = Card(cards, "Scrolling", "How the TrackPoint scrolls while you hold the middle button.");
             Check(list, "Take over middle button for scrolling",
                   "Turn this off if your keyboard already handles middle-button scrolling in firmware (e.g. TEX Shura) and you only want NubMouse's 3D/CAD drag shortcuts below.",
-                  () => settings.MiddleButtonScroll, v => change(s => s.MiddleButtonScroll = v));
-            Slider(list, "Speed", 1, 16, 100, () => settings.Speed, v => change(s => s.Speed = v),
+                  () => Profile().MiddleButtonScroll, v => ChangeProfile(s => s.MiddleButtonScroll = v));
+            var speedRow = Slider(list, "Speed", 1, 16, 100, () => Profile().Speed, v => ChangeProfile(s => s.Speed = v),
                    v => v == 4 ? "default" : null,
                    "Wheel units per pixel of TrackPoint movement (one wheel notch is 120 units). The slider goes to 16; type up to 100.");
-            Slider(list, "Horizontal", 0, 16, 100, () => settings.HorizontalSpeed, v => change(s => s.HorizontalSpeed = v),
+            var hSpeedRow = Slider(list, "Horizontal", 0, 16, 100, () => Profile().HorizontalSpeed, v => ChangeProfile(s => s.HorizontalSpeed = v),
                    v => v == 0 ? "same as vertical" : null,
                    "Separate horizontal speed. 0 = same as vertical.");
-            Check(list, "Natural (reversed) direction", null, () => settings.Natural, v => change(s => s.Natural = v));
-            Check(list, "Notched scrolling (whole wheel steps)", "Send only whole wheel notches, for apps that mishandle smooth scrolling.",
-                  () => settings.Notched, v => change(s => s.Notched = v));
-            Check(list, "Lock to one direction (vertical or horizontal)", "Like the TrackPoint driver: a push scrolls straight, not diagonally.",
-                  () => settings.AxisLock, v => change(s => s.AxisLock = v));
+            var naturalBox = Check(list, "Natural (reversed) direction", null, () => Profile().Natural, v => ChangeProfile(s => s.Natural = v));
+            var notchedBox = Check(list, "Notched scrolling (whole wheel steps)", "Send only whole wheel notches, for apps that mishandle smooth scrolling.",
+                  () => Profile().Notched, v => ChangeProfile(s => s.Notched = v));
+            var axisLockBox = Check(list, "Lock to one direction (vertical or horizontal)", "Like the TrackPoint driver: a push scrolls straight, not diagonally.",
+                  () => Profile().AxisLock, v => ChangeProfile(s => s.AxisLock = v));
             indent = S(24);
             var stickyRow = StickinessSlider(list);
             indent = 0;
-            loaders.Add(() => stickyRow.Enabled = settings.AxisLock);
-            Check(list, "Show scroll-direction indicator", "While scrolling, the pointer turns into a small indicator showing the scroll direction.",
-                  () => settings.ScrollIndicator, v => change(s => s.ScrollIndicator = v));
+            var indicatorBox = Check(list, "Show scroll-direction indicator", "While scrolling, the pointer turns into a small indicator showing the scroll direction.",
+                  () => Profile().ScrollIndicator, v => ChangeProfile(s => s.ScrollIndicator = v));
             indent = S(24);
             var lookRow = IndicatorLook(list);
             var sizeRow = Slider(list, "Size", Settings.IndicatorSizeMin, Settings.IndicatorSizeMax, Settings.IndicatorSizeMax,
-                   () => settings.IndicatorSize, v => change(s => s.IndicatorSize = v), v => v == 34 ? "px, default" : "px",
+                   () => Profile().IndicatorSize, v => ChangeProfile(s => s.IndicatorSize = v), v => v == 34 ? "px, default" : "px",
                    "Indicator diameter in pixels at 100 % display scaling. Tray presets: Tiny 20, Small 26, Medium 34, Large 46.");
-            var gapRow = Slider(list, "Gap", 0, 40, 100, () => settings.IndicatorOffset, v => change(s => s.IndicatorOffset = v),
+            var gapRow = Slider(list, "Gap", 0, 40, 100, () => Profile().IndicatorOffset, v => ChangeProfile(s => s.IndicatorOffset = v),
                    v => v == 0 ? "on the pointer" : "px from the pointer",
                    "Advanced: put the indicator beside the pointer instead of on it (below and to the right), this many pixels away. " +
                    "0 = on the pointer, which hides the pointer while scrolling.");
             var advanced = new LinkLabel { Text = "Advanced: place it beside the pointer", AutoSize = true, Margin = new Padding(indent + S(2), S(2), 0, S(4)) };
             list.Controls.Add(advanced);
             indent = 0;
-            bool showGap = settings.IndicatorOffset > 0;
+            bool showGap = Profile().IndicatorOffset > 0;
             advanced.LinkClicked += delegate { showGap = !showGap; LoadValues(); };
-            loaders.Add(() =>
-            {
-                lookRow.Enabled = sizeRow.Enabled = gapRow.Enabled = advanced.Enabled = settings.ScrollIndicator;
-                gapRow.Visible = showGap;
-                advanced.Text = showGap ? "Hide advanced placement" : "Advanced: place it beside the pointer";
-            });
 
-            list = Card(cards, "Middle click", "When a press counts as a click, and what happens after it.");
-            Slider(list, "Deadzone", 0, 20, 100, () => settings.Deadzone, v => change(s => s.Deadzone = v),
+            var clickCard = Card(cards, "Middle click", "When a press counts as a click, and what happens after it.");
+            Slider(clickCard, "Deadzone", 0, 20, 100, () => Profile().Deadzone, v => ChangeProfile(s => s.Deadzone = v),
                    v => (v == 3 ? "px, default" : "px"),
                    "How far you push the TrackPoint while holding the button before it counts as a scroll instead of a click.");
-            TimeoutSlider(list);
-            Check(list, "Cancel apps' autoscroll after a middle click", "Many apps start click-to-autoscroll on a middle click; this ends it right away.",
-                  () => settings.CancelAutoscroll, v => change(s => s.CancelAutoscroll = v));
+            TimeoutSlider(clickCard);
+            Check(clickCard, "Cancel apps' autoscroll after a middle click", "Many apps start click-to-autoscroll on a middle click; this ends it right away.",
+                  () => Profile().CancelAutoscroll, v => ChangeProfile(s => s.CancelAutoscroll = v));
+
+            loaders.Add(() =>
+            {
+                var p = Profile();
+                bool ms = p.MiddleButtonScroll;
+                speedRow.Enabled = hSpeedRow.Enabled = naturalBox.Enabled = notchedBox.Enabled = axisLockBox.Enabled = indicatorBox.Enabled = clickCard.Enabled = ms;
+                stickyRow.Enabled = ms && p.AxisLock;
+                lookRow.Enabled = sizeRow.Enabled = gapRow.Enabled = advanced.Enabled = ms && p.ScrollIndicator;
+                gapRow.Visible = showGap || p.IndicatorOffset > 0;
+                advanced.Text = gapRow.Visible ? "Hide advanced placement" : "Advanced: place it beside the pointer";
+            });
 
             list = Card(cards, "Native drag (for 3D modeling apps)",
                         "Blender, CAD and other 3D apps rotate and pan the view by dragging with the middle button. " +
                         "Hold a shortcut as you press the middle button to give them that drag instead of scrolling. Any shortcut works.");
+            var dragStatus = new Label
+            {
+                AutoSize = true, UseMnemonic = false, Font = new Font(Font, FontStyle.Bold),
+                MaximumSize = new Size(S(CardWidth - 36), 0), Margin = new Padding(S(2), 0, 0, S(6))
+            };
+            list.Controls.Add(dragStatus);
+            loaders.Add(() =>
+            {
+                var p = Profile();
+                var sc = p.DragShortcuts();
+                if (sc.Count == 0)
+                {
+                    dragStatus.Text = "Disabled \u2014 select a quick key, combo, or add a shortcut below to enable.";
+                    dragStatus.ForeColor = Subtle;
+                }
+                else
+                {
+                    dragStatus.Text = "Enabled (" + Settings.ShortcutsText(sc) + (p.KeyMoveToDrag ? " + move nub)" : " + middle button)");
+                    dragStatus.ForeColor = Color.FromArgb(0, 103, 192);
+                }
+            });
             DragKeys(list);
             list.Controls.Add(new Panel { Height = 1, Width = S(CardWidth - 36), BackColor = CardBorder, Margin = new Padding(0, S(10), 0, S(10)) });
             list.Controls.Add(new Label
@@ -193,7 +231,7 @@ namespace NubMouse
             Note(list, "For keyboards whose middle button (M_FN) scrolls in firmware and can't be rebound:");
             Check(list, "Drag without middle button",
                   "Works around firmware axis locking for smooth 360\u00b0 orbiting by using your chosen shortcut key(s) + nub movement instead of the middle button. Automatically enables Ctrl+Alt if no shortcut is ticked.",
-                  () => settings.KeyMoveToDrag, v => change(s =>
+                  () => Profile().KeyMoveToDrag, v => ChangeProfile(s =>
                   {
                       s.KeyMoveToDrag = v;
                       if (v && s.DragShortcuts().Count == 0) s.DragKeys = "Ctrl+Alt";
@@ -207,7 +245,7 @@ namespace NubMouse
             var wheelBox = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, Margin = new Padding(S(14), S(2), 0, 0), Visible = false };
             Check(wheelBox, "Convert firmware scroll + hotkey to drag",
                   "Works like Quick keys + middle button using M_FN, but inherits the firmware's axis-locked scroll steps.",
-                  () => settings.WheelToDrag, v => change(s => s.WheelToDrag = v));
+                  () => Profile().WheelToDrag, v => ChangeProfile(s => s.WheelToDrag = v));
             indent = S(22);
             Note(wheelBox, "Uses M_FN + shortcut; inherits firmware axis locking.");
             indent = 0;
@@ -215,7 +253,7 @@ namespace NubMouse
             sameKeys.CheckedChanged += delegate
             {
                 if (loading) return;
-                change(s => s.WheelDragKeys = sameKeys.Checked ? "" : (s.WheelDragShortcuts().Count > 0 ? s.WheelDragKeys : "Alt"));
+                ChangeProfile(s => s.WheelDragKeys = sameKeys.Checked ? "" : (s.WheelDragShortcuts().Count > 0 ? s.WheelDragKeys : "Alt"));
             };
             wheelBox.Controls.Add(sameKeys);
             var wKeysRow = new FlowLayoutPanel { AutoSize = true, WrapContents = true, MaximumSize = new Size(S(CardWidth - 56), 0), Margin = new Padding(S(38), S(2), 0, S(2)) };
@@ -227,7 +265,7 @@ namespace NubMouse
                 {
                     if (loading) return;
                     bool on = cb.Checked;
-                    change(s =>
+                    ChangeProfile(s =>
                     {
                         var l = s.WheelDragShortcuts();
                         l.RemoveAll(x => SameKeys(x, sc));
@@ -237,16 +275,18 @@ namespace NubMouse
                 };
                 loaders.Add(() =>
                 {
-                    var wlist = settings.WheelDragShortcuts();
+                    var p = Profile();
+                    var wlist = p.WheelDragShortcuts();
                     cb.Checked = wlist.Exists(x => SameKeys(x, sc));
-                    cb.Enabled = settings.WheelToDrag && wlist.Count > 0;
+                    cb.Enabled = p.WheelToDrag && wlist.Count > 0;
                 });
                 wKeysRow.Controls.Add(cb);
             }
             loaders.Add(() =>
             {
-                sameKeys.Checked = settings.WheelDragShortcuts().Count == 0;
-                sameKeys.Enabled = settings.WheelToDrag;
+                var p = Profile();
+                sameKeys.Checked = p.WheelDragShortcuts().Count == 0;
+                sameKeys.Enabled = p.WheelToDrag;
             });
             wheelBox.Controls.Add(wKeysRow);
             list.Controls.Add(wheelBox);
@@ -258,9 +298,10 @@ namespace NubMouse
             BuildGeneralPage(general);
 
             // Test pad card: what you're doing now, the pad, and recent events.
-            var padCard = new CardTable { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, BackColor = CardBack,
+            var padCard = new CardTable { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 7, BackColor = CardBack,
                                           Padding = new Padding(S(16), S(12), S(16), S(14)), Margin = new Padding(S(6), 0, 0, S(10)) };
             padCard.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            padCard.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             padCard.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             padCard.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             padCard.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -270,15 +311,22 @@ namespace NubMouse
             padCard.Controls.Add(new Label { Text = "Test pad", Font = sectionFont, AutoSize = true, Margin = new Padding(0, 0, 0, S(2)) }, 0, 0);
             padCard.Controls.Add(new Label
             {
-                AutoSize = true, ForeColor = Subtle, MaximumSize = new Size(S(520), 0), Margin = new Padding(0, 0, 0, S(8)),
+                AutoSize = true, ForeColor = Subtle, MaximumSize = new Size(S(520), 0), Margin = new Padding(0, 0, 0, S(6)),
                 Text = "Try changes here without switching apps: hold the middle button and push the TrackPoint to scroll, " +
                        "tap it to click, or hold a native-drag shortcut, press the middle button and move."
             }, 0, 1);
+            var padDevice = new Label
+            {
+                AutoSize = false, AutoEllipsis = true, UseMnemonic = false, Anchor = AnchorStyles.Left | AnchorStyles.Right,
+                Height = S(20), ForeColor = Subtle, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 0, 0, S(2)),
+                Text = "Input device: move pointer to detect"
+            };
+            padCard.Controls.Add(padDevice, 0, 2);
             padStatus = new Label { AutoSize = false, AutoEllipsis = true, Anchor = AnchorStyles.Left | AnchorStyles.Right, Height = S(24), Font = new Font(Font, FontStyle.Bold),
                                     TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 0, 0, S(4)) };
-            padCard.Controls.Add(padStatus, 0, 2);
-            pad = new TestPad(settings, () => host.MiddleHeld, k) { Dock = DockStyle.Fill, Margin = Padding.Empty };
-            padCard.Controls.Add(pad, 0, 3);
+            padCard.Controls.Add(padStatus, 0, 3);
+            pad = new TestPad(settings, () => host.MiddleHeld, () => host.LastActiveDeviceKey, k) { Dock = DockStyle.Fill, Margin = Padding.Empty };
+            padCard.Controls.Add(pad, 0, 4);
 
             var logHead = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, RowCount = 1, Margin = new Padding(0, S(10), 0, S(4)) };
             logHead.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -286,12 +334,53 @@ namespace NubMouse
             logHead.Controls.Add(new Label { Text = "Recent events", AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = Padding.Empty }, 0, 0);
             var clear = new LinkLabel { Text = "Clear", AutoSize = true, Margin = Padding.Empty };
             logHead.Controls.Add(clear, 1, 0);
-            padCard.Controls.Add(logHead, 0, 4);
+            padCard.Controls.Add(logHead, 0, 5);
             log = new ListBox { Dock = DockStyle.Fill, IntegralHeight = false, HorizontalScrollbar = true, BorderStyle = BorderStyle.FixedSingle,
                                 BackColor = TestPad.Back, ForeColor = TestPad.Ink, Margin = Padding.Empty };
-            padCard.Controls.Add(log, 0, 5);
+            padCard.Controls.Add(log, 0, 6);
             clear.LinkClicked += delegate { log.Items.Clear(); };
             body.Controls.Add(padCard, 1, 0);
+
+            var padDevNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            Action refreshPadDevNames = () =>
+            {
+                padDevNames.Clear();
+                foreach (var d in RawInputDevices.ListMouseDevices()) padDevNames[d.Key] = d.Name;
+            };
+            refreshPadDevNames();
+            string lastPadDevKey = null;
+            Action<bool> updatePadDevice = force =>
+            {
+                string key = host.LastActiveDeviceKey;
+                if (!force && string.Equals(key, lastPadDevKey, StringComparison.OrdinalIgnoreCase)) return;
+                lastPadDevKey = key;
+                if (string.IsNullOrEmpty(key))
+                {
+                    padDevice.Text = "Input device: move pointer to detect";
+                    padDevice.ForeColor = Subtle;
+                    return;
+                }
+                string name;
+                if (!padDevNames.TryGetValue(key, out name))
+                {
+                    refreshPadDevNames();
+                    if (!padDevNames.TryGetValue(key, out name)) name = key;
+                }
+                var modes = settings.ParsedDeviceModes();
+                var allowed = settings.AllowedDeviceKeys();
+                DeviceMode mode;
+                if (!modes.TryGetValue(key, out mode))
+                    mode = allowed.Count > 0 && !allowed.Contains(key) ? DeviceMode.Ignore : DeviceMode.Full;
+                string modeText = mode == DeviceMode.DragOnly ? "3D drag only" : mode == DeviceMode.Ignore ? "Ignored (native)" : "Full NubMouse";
+                bool custom = settings.DeviceProfiles != null && settings.DeviceProfiles.ContainsKey(key);
+                padDevice.Text = "Input device: " + name + "  \u00b7  " + modeText + (custom ? "  \u00b7  custom profile" : "");
+                padDevice.ForeColor = mode == DeviceMode.Ignore ? Subtle : Color.FromArgb(0, 103, 192);
+            };
+            var padDevTimer = new Timer { Interval = 150 };
+            padDevTimer.Tick += delegate { if (Visible) updatePadDevice(false); };
+            padDevTimer.Start();
+            FormClosed += delegate { padDevTimer.Stop(); padDevTimer.Dispose(); };
+            loaders.Add(() => updatePadDevice(true));
 
             pad.StatusChanged += (text, color) => { padStatus.Text = text; padStatus.ForeColor = color; };
             pad.Logged += line =>
@@ -342,6 +431,9 @@ namespace NubMouse
         {
             if (m.Msg != Native.WM_MOUSEWHEEL && m.Msg != Native.WM_MOUSEHWHEEL) return false;
             if (!IsHandleCreated || !Visible) return false;
+            var target = Control.FromChildHandle(m.HWnd);
+            if (target == null || target.FindForm() != this) return false;
+
             long lp = m.LParam.ToInt64();
             var pt = new Point((short)(lp & 0xFFFF), (short)((lp >> 16) & 0xFFFF));
             if (pad.IsHandleCreated && pad.Visible && pad.RectangleToScreen(pad.ClientRectangle).Contains(pt))
@@ -353,8 +445,6 @@ namespace NubMouse
 
             // Redirect wheel events aimed at a TrackBar, NumericUpDown, or closed ComboBox inside
             // this window to its enclosing scrollable page so scrolling never nudges a control.
-            var target = Control.FromChildHandle(m.HWnd);
-            if (target == null || target.FindForm() != this) return false;
             bool block = false;
             ScrollableControl page = null;
             for (var c = target; c != null && c != this; c = c.Parent)
@@ -375,14 +465,127 @@ namespace NubMouse
         void ResetDefaults()
         {
             var d = new Settings();
-            change(s =>
+            bool tex = activeProfileKey != null && settings.IsFirmwareScrollOrDragOnly(activeProfileKey);
+            ChangeProfile(s =>
             {
+                s.MiddleButtonScroll = !tex;
                 s.Speed = d.Speed; s.HorizontalSpeed = d.HorizontalSpeed; s.Natural = d.Natural; s.Notched = d.Notched;
                 s.ScrollIndicator = d.ScrollIndicator; s.IndicatorOffset = d.IndicatorOffset; s.IndicatorStyle = d.IndicatorStyle; s.IndicatorSize = d.IndicatorSize; s.AxisLock = d.AxisLock; s.Stickiness = d.Stickiness;
                 s.Deadzone = d.Deadzone; s.ClickTimeout = d.ClickTimeout; s.CancelAutoscroll = d.CancelAutoscroll;
-                s.DragKeys = d.DragKeys;
+                s.DragKeys = tex ? "Ctrl+Alt" : d.DragKeys; s.KeyMoveToDrag = tex; s.WheelToDrag = d.WheelToDrag; s.WheelDragKeys = d.WheelDragKeys;
             });
             LoadValues();
+        }
+
+        void BuildProfileCard(FlowLayoutPanel cards)
+        {
+            var list = Card(cards, "Configuring", "Apply the settings below to all pointing devices, or pick one device to give it its own custom profile.");
+            var row = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = false, Padding = new Padding(0, 0, 0, S(3)), Margin = new Padding(0, S(2), 0, S(4)) };
+            var combo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = S(320), Margin = new Padding(0, S(2), S(8), S(2)) };
+            var useDefault = new Button { Text = "Use default", AutoSize = true, Padding = new Padding(S(6), S(1), S(6), S(1)), Margin = new Padding(0, S(1), 0, S(1)) };
+            tips.SetToolTip(useDefault, "Remove this device's custom profile so it inherits the 'All devices (default)' settings again.");
+            row.Controls.Add(combo);
+            row.Controls.Add(useDefault);
+            list.Controls.Add(row);
+
+            var status = new Label
+            {
+                AutoSize = true, UseMnemonic = false, ForeColor = Subtle,
+                MaximumSize = new Size(S(CardWidth - 36), 0), Margin = new Padding(S(2), S(2), 0, S(2))
+            };
+            list.Controls.Add(status);
+
+            var keys = new List<string>();       // index 0 = null (All devices), 1..N = device keys
+            var names = new List<string>();
+
+            Action populate = () =>
+            {
+                keys.Clear();
+                names.Clear();
+                combo.Items.Clear();
+
+                keys.Add(null);
+                names.Add("All devices (default)");
+                combo.Items.Add("All devices (default)");
+
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var dev in RawInputDevices.ListMouseDevices())
+                {
+                    seen.Add(dev.Key);
+                    keys.Add(dev.Key);
+                    names.Add(dev.Name);
+                    bool custom = settings.DeviceProfiles != null && settings.DeviceProfiles.ContainsKey(dev.Key);
+                    combo.Items.Add(custom ? dev.Name + " (custom)" : dev.Name);
+                }
+                if (settings.DeviceProfiles != null)
+                {
+                    foreach (var kv in settings.DeviceProfiles)
+                    {
+                        if (seen.Contains(kv.Key)) continue;
+                        keys.Add(kv.Key);
+                        names.Add(kv.Key);
+                        combo.Items.Add(kv.Key + " (custom, disconnected)");
+                    }
+                }
+
+                int sel = 0;
+                if (activeProfileKey != null)
+                {
+                    for (int i = 1; i < keys.Count; i++)
+                        if (string.Equals(keys[i], activeProfileKey, StringComparison.OrdinalIgnoreCase)) { sel = i; break; }
+                    if (sel == 0) activeProfileKey = null;
+                }
+                combo.SelectedIndex = sel;
+            };
+
+            combo.SelectedIndexChanged += delegate
+            {
+                if (loading || combo.SelectedIndex < 0 || combo.SelectedIndex >= keys.Count) return;
+                activeProfileKey = keys[combo.SelectedIndex];
+                LoadValues();
+            };
+
+            useDefault.Click += delegate
+            {
+                if (activeProfileKey == null) return;
+                string kRem = activeProfileKey;
+                change(s => { if (s.DeviceProfiles != null) s.DeviceProfiles.Remove(kRem); });
+                LoadValues();
+            };
+
+            var boldFont = new Font(Font, FontStyle.Bold);
+            FormClosed += delegate { boldFont.Dispose(); };
+
+            loaders.Add(() =>
+            {
+                populate();
+                bool hasCustom = activeProfileKey != null && settings.DeviceProfiles != null && settings.DeviceProfiles.ContainsKey(activeProfileKey);
+                useDefault.Enabled = hasCustom;
+                useDefault.Visible = activeProfileKey != null;
+                if (activeProfileKey == null)
+                {
+                    status.Font = Font;
+                    status.ForeColor = Subtle;
+                    status.Text = "Editing default settings used by every device without its own custom profile.";
+                }
+                else
+                {
+                    int idx = combo.SelectedIndex;
+                    string label = idx >= 0 && idx < names.Count ? names[idx] : activeProfileKey;
+                    if (hasCustom)
+                    {
+                        status.Font = boldFont;
+                        status.ForeColor = Color.FromArgb(0, 103, 192);
+                        status.Text = "Custom profile active for " + label + ". Changes below apply only to this device.";
+                    }
+                    else
+                    {
+                        status.Font = Font;
+                        status.ForeColor = Color.FromArgb(0, 103, 192);
+                        status.Text = "Inheriting default settings for " + label + ". Change any setting below to give it a custom profile.";
+                    }
+                }
+            });
         }
 
         // ---- Pages and tabs ----------------------------------------------------------------------
@@ -559,7 +762,7 @@ namespace NubMouse
             var activeLabel = new Label
             {
                 Text = "Move or click any pointing device to identify it here.",
-                AutoSize = true, ForeColor = Subtle, Margin = new Padding(S(2), S(6), 0, S(2)),
+                AutoSize = true, UseMnemonic = false, ForeColor = Subtle, Margin = new Padding(S(2), S(6), 0, S(2)),
                 MaximumSize = new Size(S(CardWidth - 40), 0)
             };
             var refresh = new LinkLabel { Text = "Refresh the list", AutoSize = true, Margin = new Padding(S(2), S(2), 0, S(2)) };
@@ -593,7 +796,6 @@ namespace NubMouse
                     else map[key] = mode;
                     s.DeviceModes = Settings.FormatDeviceModes(map);
                     s.DeviceFilter = "";   // superseded by per-device modes
-                    if (mode == DeviceMode.DragOnly && s.DragShortcuts().Count == 0) s.DragKeys = "Ctrl+Alt";
                 });
             };
 
@@ -833,9 +1035,9 @@ namespace NubMouse
                 loading = true;
                 try { show(ms); }
                 finally { loading = was; }
-                if (!was) change(s => s.ClickTimeout = ms);
+                if (!was) ChangeProfile(s => s.ClickTimeout = ms);
             };
-            loaders.Add(() => show(settings.ClickTimeout));
+            loaders.Add(() => show(Profile().ClickTimeout));
         }
 
         /// One tick box per key: holding any ticked key with the middle button passes a native drag through.
@@ -860,10 +1062,11 @@ namespace NubMouse
                     EditShortcuts(l => { l.RemoveAll(x => SameKeys(x, single)); if (on) l.Add(single); });
                 };
                 tips.SetToolTip(box, tip);
-                loaders.Add(() => box.Checked = settings.DragShortcuts().Exists(x => SameKeys(x, single)));
+                loaders.Add(() => box.Checked = Profile().DragShortcuts().Exists(x => SameKeys(x, single)));
                 cell.Controls.Add(box);
             }
-            cell.Controls.Add(new Label { Text = "+ middle button", AutoSize = true, ForeColor = SystemColors.GrayText, Margin = new Padding(0, S(5), 0, 0) });
+            var quickSuffix = new Label { Text = "+ middle button", AutoSize = true, ForeColor = SystemColors.GrayText, Margin = new Padding(0, S(5), 0, 0) };
+            cell.Controls.Add(quickSuffix);
             row.Controls.Add(cell, 1, 0);
             row.SetColumnSpan(cell, 2);
 
@@ -881,9 +1084,16 @@ namespace NubMouse
                     EditShortcuts(l => { l.RemoveAll(x => SameKeys(x, combo)); if (on) l.Add(combo); });
                 };
                 tips.SetToolTip(box, "One-click combo shortcut — keeps single Alt/Ctrl/Shift keys free.");
-                loaders.Add(() => box.Checked = settings.DragShortcuts().Exists(x => SameKeys(x, combo)));
+                loaders.Add(() => box.Checked = Profile().DragShortcuts().Exists(x => SameKeys(x, combo)));
                 comboCell.Controls.Add(box);
             }
+            var comboSuffix = new Label { Text = "+ middle button", AutoSize = true, ForeColor = SystemColors.GrayText, Margin = new Padding(0, S(5), 0, 0) };
+            comboCell.Controls.Add(comboSuffix);
+            loaders.Add(() =>
+            {
+                bool needsMid = !Profile().KeyMoveToDrag;
+                quickSuffix.Visible = comboSuffix.Visible = needsMid;
+            });
             comboRow.Controls.Add(comboCell, 1, 0);
             comboRow.SetColumnSpan(comboCell, 2);
 
@@ -912,7 +1122,7 @@ namespace NubMouse
             {
                 shown.Clear();
                 box2.Items.Clear();
-                foreach (var s in settings.DragShortcuts())
+                foreach (var s in Profile().DragShortcuts())
                 {
                     if (quickShortcuts.Exists(q => SameKeys(q, s))) continue;   // a tick box above
                     shown.Add(s);
@@ -989,10 +1199,10 @@ namespace NubMouse
 
         void EditShortcuts(Action<List<int[]>> edit)
         {
-            var l = settings.DragShortcuts();
+            var l = Profile().DragShortcuts();
             edit(l);
             var text = Settings.ShortcutsText(l);
-            change(s => s.DragKeys = text);
+            ChangeProfile(s => s.DragKeys = text);
             LoadValues();
         }
 
@@ -1047,11 +1257,11 @@ namespace NubMouse
                 show();
                 if (loading) return;
                 int v = StickyValue(bar.Value);
-                change(s => s.Stickiness = v);
+                ChangeProfile(s => s.Stickiness = v);
             };
             bar.Resize += delegate { marks.Invalidate(); };
             marks.Picked += stop => bar.Value = stop;
-            loaders.Add(() => { bar.Value = StickyStop(settings.Stickiness); show(); });
+            loaders.Add(() => { bar.Value = StickyStop(Profile().Stickiness); show(); });
             return row;
         }
 
@@ -1139,7 +1349,7 @@ namespace NubMouse
             var style = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = S(110), Anchor = AnchorStyles.Left };
             for (int i = 0; i < IndicatorArt.StyleLabels.Length; i++) style.Items.Add(IndicatorArt.StyleLabels[i] + (i == 0 ? " (default)" : ""));
             var preview = new IndicatorPreview(k) { Width = S(150), Height = S(76), Margin = new Padding(S(10), 0, 0, 0) };
-            style.SelectedIndexChanged += delegate { if (!loading && style.SelectedIndex >= 0) { int v = style.SelectedIndex; change(s => s.IndicatorStyle = v); } };
+            style.SelectedIndexChanged += delegate { if (!loading && style.SelectedIndex >= 0) { int v = style.SelectedIndex; ChangeProfile(s => s.IndicatorStyle = v); } };
             tips.SetToolTip(style, tip);
             tips.SetToolTip(preview, tip);
             var cell = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty, Anchor = AnchorStyles.Left };
@@ -1149,8 +1359,9 @@ namespace NubMouse
             row.SetColumnSpan(cell, 2);
             loaders.Add(() =>
             {
-                style.SelectedIndex = Math.Max(0, Math.Min(style.Items.Count - 1, settings.IndicatorStyle));
-                preview.Set(settings.IndicatorStyle, settings.IndicatorSize, settings.ScrollIndicator);
+                var p = Profile();
+                style.SelectedIndex = Math.Max(0, Math.Min(style.Items.Count - 1, p.IndicatorStyle));
+                preview.Set(p.IndicatorStyle, p.IndicatorSize, p.ScrollIndicator);
             });
             return row;
         }
@@ -1206,6 +1417,7 @@ namespace NubMouse
     {
         readonly Settings settings;
         readonly Func<bool> middleHeld;
+        readonly Func<string> activeDeviceKey;
         readonly float k;
         readonly Timer timer = new Timer { Interval = 15 };
 
@@ -1240,10 +1452,11 @@ namespace NubMouse
         public event Action<string, Color> StatusChanged;
         public event Action<string> Logged;
 
-        public TestPad(Settings settings, Func<bool> middleHeld, float k)
+        public TestPad(Settings settings, Func<bool> middleHeld, Func<string> activeDeviceKey, float k)
         {
             this.settings = settings;
             this.middleHeld = middleHeld;
+            this.activeDeviceKey = activeDeviceKey;
             this.k = k;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint |
                      ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
@@ -1370,7 +1583,8 @@ namespace NubMouse
             downPt = e.Location;
             path.Clear();
             path.Add(e.Location);
-            var held = ScrollEngine.HeldShortcut(settings.DragShortcuts().ToArray());
+            var active = settings.EffectiveProfileFor(activeDeviceKey());
+            var held = ScrollEngine.HeldShortcut(active.DragShortcuts().ToArray());
             dragKey = held != null ? Settings.ShortcutText(held) : null;
             Invalidate();
         }
@@ -1448,9 +1662,10 @@ namespace NubMouse
                 if (!clicked && !scrolled)
                 {
                     int heldMs = engineUpTick - engineDownTick;
-                    string why = settings.ClickTimeout > 0 && heldMs >= settings.ClickTimeout
-                        ? string.Format("held {0} ms, past the {1} ms time limit", heldMs, settings.ClickTimeout)
-                        : string.Format("pushed past the {0} px deadzone, so it counted as a scroll", settings.Deadzone);
+                    var active = settings.EffectiveProfileFor(activeDeviceKey());
+                    string why = active.ClickTimeout > 0 && heldMs >= active.ClickTimeout
+                        ? string.Format("held {0} ms, past the {1} ms time limit", heldMs, active.ClickTimeout)
+                        : string.Format("pushed past the {0} px deadzone, so it counted as a scroll", active.Deadzone);
                     string msg = "No middle click sent: " + why;
                     SetStatus(msg, Amber);
                     AddLog(msg);

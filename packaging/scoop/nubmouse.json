@@ -4,7 +4,7 @@
     "homepage": "https://github.com/dstarikov/NubMouse",
     "license": "MIT",
     "url": "https://github.com/dstarikov/NubMouse/releases/download/v0.1.0/NubMouse.exe",
-    "hash": "f86e7b1807465d9948d3900b08a8c33c207733219306aa8772577f1ea0e3b1c7",
+    "hash": "78c514a9ec7217a464ba63eb87614a54065ac2de4c58e3576171b9e1a2369e6a",
     "bin": "NubMouse.exe",
     "shortcuts": [
         [

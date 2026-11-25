@@ -23,12 +23,15 @@ namespace NubMouse
     static class RawInputDevices
     {
         static readonly Regex VidPidRx = new Regex(@"VID_([0-9A-Fa-f]{4})&PID_([0-9A-Fa-f]{4})", RegexOptions.Compiled);
+        // Bluetooth LE (HID over GATT) encodes VID/PID as VID&0204D9_PID&2521 (2-hex source + 4-hex VID).
+        static readonly Regex BleVidPidRx = new Regex(@"VID&[0-9A-Fa-f]{2}([0-9A-Fa-f]{4})_PID&([0-9A-Fa-f]{4})", RegexOptions.Compiled);
 
         // Well-known pointing-stick keyboards whose USB/HID descriptors report generic names
         // (e.g. Holtek's "USB-HID Keyboard" on TEX keyboards).
         static readonly Dictionary<string, string> KnownDevices = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            { "04D9:0532", "TEX Shura" },
+            { "04D9:0532", "TEX Shura (USB)" },
+            { "04D9:2521", "TEX Shura (Bluetooth)" },
             { "04D9:0407", "TEX Shinobi" },
             { "17EF:60EE", "ThinkPad TrackPoint Keyboard II (USB)" },
             { "17EF:60E1", "ThinkPad TrackPoint Keyboard II (Bluetooth)" },
@@ -49,9 +52,17 @@ namespace NubMouse
         // Firmware-scroll pointing-stick keyboards whose M_FN scrolls in hardware and works best in DragOnly mode.
         static readonly HashSet<string> FirmwareScrollKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "04D9:0532", // TEX Shura
+            "04D9:0532", // TEX Shura (USB)
+            "04D9:2521", // TEX Shura (Bluetooth)
             "04D9:0407", // TEX Shinobi
         };
+
+        /// True for known firmware-scroll keyboards (e.g. TEX Shura / Shinobi) where middle-button
+        /// scrolling should be off by default so M_FN stays untouched.
+        public static bool IsFirmwareScrollDevice(string devKey)
+        {
+            return !string.IsNullOrEmpty(devKey) && FirmwareScrollKeys.Contains(devKey);
+        }
 
         // Common external mouse USB vendor IDs (suggested as Ignore when a TrackPoint/TEX is also present).
         static readonly HashSet<string> ExternalMouseVids = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -161,6 +172,8 @@ namespace NubMouse
         public static string KeyFromRawName(string rawName)
         {
             var m = VidPidRx.Match(rawName);
+            if (m.Success) return (m.Groups[1].Value + ":" + m.Groups[2].Value).ToUpperInvariant();
+            m = BleVidPidRx.Match(rawName);
             if (m.Success) return (m.Groups[1].Value + ":" + m.Groups[2].Value).ToUpperInvariant();
 
             // e.g. \\?\ACPI#LEN0071#4&...#{guid} -> ACPI\LEN0071

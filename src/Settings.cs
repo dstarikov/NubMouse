@@ -50,6 +50,7 @@ namespace NubMouse
         public string WheelDragKeys = "";    // empty = same shortcuts as DragKeys; otherwise separate shortcut(s) for WheelToDrag
         public string DeviceFilter = "";     // empty = all pointing devices; comma-separated device keys (e.g. "17EF:6009")
         public string DeviceModes = "";      // per-device overrides: "04D9:0532=dragonly;046D:C547=ignore"
+        public Dictionary<string, Settings> DeviceProfiles = new Dictionary<string, Settings>(StringComparer.OrdinalIgnoreCase);
 
         // Stickiness: how much more the other axis must move (recently) than the locked one to
         // switch to it, in tenths (20 = 2.0x). 0 = fixed: never switches, like the driver.
@@ -211,7 +212,66 @@ namespace NubMouse
             get { try { return File.Exists(PortableIniPath); } catch (Exception) { return false; } }
         }
 
-        public Settings Clone() { return (Settings)MemberwiseClone(); }
+        public Settings Clone()
+        {
+            var c = (Settings)MemberwiseClone();
+            c.DeviceProfiles = new Dictionary<string, Settings>(StringComparer.OrdinalIgnoreCase);
+            if (DeviceProfiles != null)
+                foreach (var kv in DeviceProfiles)
+                    if (kv.Value != null) c.DeviceProfiles[kv.Key] = (Settings)kv.Value.MemberwiseClone();
+            return c;
+        }
+
+        public bool IsFirmwareScrollOrDragOnly(string devKey)
+        {
+            if (string.IsNullOrEmpty(devKey)) return false;
+            if (RawInputDevices.IsFirmwareScrollDevice(devKey)) return true;
+            DeviceMode m;
+            return ParsedDeviceModes().TryGetValue(devKey, out m) && m == DeviceMode.DragOnly;
+        }
+
+        public Settings GetOrCreateProfile(string devKey)
+        {
+            Settings p;
+            if (!DeviceProfiles.TryGetValue(devKey, out p) || p == null)
+            {
+                p = EffectiveProfileFor(devKey);
+                if (p == this)
+                {
+                    p = (Settings)MemberwiseClone();
+                    p.DeviceProfiles = new Dictionary<string, Settings>(StringComparer.OrdinalIgnoreCase);
+                }
+                DeviceProfiles[devKey] = p;
+            }
+            return p;
+        }
+
+        public Settings ProfileFor(string devKey)
+        {
+            Settings p;
+            if (!string.IsNullOrEmpty(devKey) && DeviceProfiles != null && DeviceProfiles.TryGetValue(devKey, out p) && p != null)
+                return p;
+            return this;
+        }
+
+        /// Returns the device's custom profile if one exists, otherwise the default settings for
+        /// that device (TEX / firmware-scroll devices default to MiddleButtonScroll = false and KeyMoveToDrag = true).
+        public Settings EffectiveProfileFor(string devKey)
+        {
+            Settings p;
+            if (!string.IsNullOrEmpty(devKey) && DeviceProfiles != null && DeviceProfiles.TryGetValue(devKey, out p) && p != null)
+                return p;
+            if (IsFirmwareScrollOrDragOnly(devKey))
+            {
+                var tex = (Settings)MemberwiseClone();
+                tex.DeviceProfiles = new Dictionary<string, Settings>(StringComparer.OrdinalIgnoreCase);
+                tex.MiddleButtonScroll = false;
+                tex.KeyMoveToDrag = true;
+                if (tex.DragShortcuts().Count == 0) tex.DragKeys = "Ctrl+Alt";
+                return tex;
+            }
+            return this;
+        }
 
         public static Settings Load()
         {
@@ -274,10 +334,83 @@ namespace NubMouse
                     s.RunAsAdmin = ReadBool(k, "RunAsAdmin", s.RunAsAdmin);
                     object t = k.GetValue("LastUpdateCheck");
                     if (t is long) s.LastUpdateCheck = (long)t;
+                    LoadProfilesFromRegistry(s, k);
                 }
             }
             catch (Exception) { /* unreadable settings: fall back to defaults */ }
             return s;
+        }
+
+        static void LoadProfilesFromRegistry(Settings s, RegistryKey root)
+        {
+            try
+            {
+                using (var devs = root.OpenSubKey("Profiles"))
+                {
+                    if (devs == null) return;
+                    foreach (var sub in devs.GetSubKeyNames())
+                    {
+                        using (var dk = devs.OpenSubKey(sub))
+                        {
+                            if (dk == null) continue;
+                            string key = (dk.GetValue("Key") as string) ?? sub.Replace('~', '\\');
+                            var p = (Settings)s.MemberwiseClone();
+                            p.DeviceProfiles = new Dictionary<string, Settings>(StringComparer.OrdinalIgnoreCase);
+                            ReadTuningFromRegistry(p, dk);
+                            s.DeviceProfiles[key] = p;
+                        }
+                    }
+                }
+            }
+            catch (Exception) { }
+        }
+
+        static void ReadTuningFromRegistry(Settings s, RegistryKey k)
+        {
+            s.MiddleButtonScroll = ReadBool(k, "MiddleButtonScroll", s.MiddleButtonScroll);
+            s.Speed = Clamp(ReadInt(k, "Speed", s.Speed), 1, 100);
+            s.HorizontalSpeed = Clamp(ReadInt(k, "HorizontalSpeed", s.HorizontalSpeed), 0, 100);
+            s.Deadzone = Clamp(ReadInt(k, "Deadzone", s.Deadzone), 0, 100);
+            s.ClickTimeout = Clamp(ReadInt(k, "ClickTimeout", s.ClickTimeout), 0, 10000);
+            s.Notched = ReadBool(k, "Notched", s.Notched);
+            s.Natural = ReadBool(k, "Natural", s.Natural);
+            s.AxisLock = ReadBool(k, "AxisLock", s.AxisLock);
+            object ratio = k.GetValue("StickinessRatio");
+            if (ratio is int) s.Stickiness = ClampStickiness((int)ratio);
+            s.ScrollIndicator = ReadBool(k, "ScrollIndicator", s.ScrollIndicator);
+            s.IndicatorOffset = Clamp(ReadInt(k, "IndicatorOffset", s.IndicatorOffset), 0, 100);
+            s.IndicatorStyle = Clamp(ReadInt(k, "IndicatorStyle", s.IndicatorStyle), 0, IndicatorStyleNames.Length - 1);
+            object diam = k.GetValue("IndicatorDiameter");
+            if (diam is int) s.IndicatorSize = Clamp((int)diam, IndicatorSizeMin, IndicatorSizeMax);
+            var dragKeys = k.GetValue("DragKeys") as string;
+            if (dragKeys != null && ParseShortcuts(dragKeys) != null) s.DragKeys = dragKeys;
+            s.KeyMoveToDrag = ReadBool(k, "KeyMoveToDrag", s.KeyMoveToDrag);
+            s.WheelToDrag = ReadBool(k, "WheelToDrag", s.WheelToDrag);
+            var wheelKeys = k.GetValue("WheelDragKeys") as string;
+            if (wheelKeys != null && ParseShortcuts(wheelKeys) != null) s.WheelDragKeys = wheelKeys;
+            s.CancelAutoscroll = ReadBool(k, "CancelAutoscroll", s.CancelAutoscroll);
+        }
+
+        static void WriteTuningToRegistry(Settings s, RegistryKey k)
+        {
+            k.SetValue("MiddleButtonScroll", s.MiddleButtonScroll ? 1 : 0, RegistryValueKind.DWord);
+            k.SetValue("Speed", s.Speed, RegistryValueKind.DWord);
+            k.SetValue("HorizontalSpeed", s.HorizontalSpeed, RegistryValueKind.DWord);
+            k.SetValue("Deadzone", s.Deadzone, RegistryValueKind.DWord);
+            k.SetValue("ClickTimeout", s.ClickTimeout, RegistryValueKind.DWord);
+            k.SetValue("Notched", s.Notched ? 1 : 0, RegistryValueKind.DWord);
+            k.SetValue("Natural", s.Natural ? 1 : 0, RegistryValueKind.DWord);
+            k.SetValue("AxisLock", s.AxisLock ? 1 : 0, RegistryValueKind.DWord);
+            k.SetValue("StickinessRatio", s.Stickiness, RegistryValueKind.DWord);
+            k.SetValue("ScrollIndicator", s.ScrollIndicator ? 1 : 0, RegistryValueKind.DWord);
+            k.SetValue("IndicatorOffset", s.IndicatorOffset, RegistryValueKind.DWord);
+            k.SetValue("IndicatorStyle", s.IndicatorStyle, RegistryValueKind.DWord);
+            k.SetValue("IndicatorDiameter", s.IndicatorSize, RegistryValueKind.DWord);
+            k.SetValue("DragKeys", s.DragKeys ?? "", RegistryValueKind.String);
+            k.SetValue("KeyMoveToDrag", s.KeyMoveToDrag ? 1 : 0, RegistryValueKind.DWord);
+            k.SetValue("WheelToDrag", s.WheelToDrag ? 1 : 0, RegistryValueKind.DWord);
+            k.SetValue("WheelDragKeys", s.WheelDragKeys ?? "", RegistryValueKind.String);
+            k.SetValue("CancelAutoscroll", s.CancelAutoscroll ? 1 : 0, RegistryValueKind.DWord);
         }
 
         public void Save()
@@ -326,6 +459,23 @@ namespace NubMouse
                     k.SetValue("AutoInstallUpdates", AutoInstallUpdates ? 1 : 0, RegistryValueKind.DWord);
                     k.SetValue("RunAsAdmin", RunAsAdmin ? 1 : 0, RegistryValueKind.DWord);
                     k.SetValue("LastUpdateCheck", LastUpdateCheck, RegistryValueKind.QWord);
+                    try { k.DeleteSubKeyTree("Profiles", false); } catch (Exception) { }
+                    if (DeviceProfiles != null && DeviceProfiles.Count > 0)
+                    {
+                        using (var devs = k.CreateSubKey("Profiles"))
+                        {
+                            foreach (var kv in DeviceProfiles)
+                            {
+                                if (kv.Value == null) continue;
+                                string safe = kv.Key.Replace('\\', '~');
+                                using (var dk = devs.CreateSubKey(safe))
+                                {
+                                    dk.SetValue("Key", kv.Key, RegistryValueKind.String);
+                                    WriteTuningToRegistry(kv.Value, dk);
+                                }
+                            }
+                        }
+                    }
                 }
             }
             catch (Exception) { /* not fatal: settings just won't persist */ }
@@ -335,10 +485,22 @@ namespace NubMouse
         {
             try
             {
+                Settings target = s;
                 foreach (var raw in File.ReadAllLines(path))
                 {
                     var line = raw.Trim();
-                    if (line.Length == 0 || line[0] == ';' || line[0] == '#' || line[0] == '[') continue;
+                    if (line.Length == 0 || line[0] == ';' || line[0] == '#') continue;
+                    if (line[0] == '[' && line[line.Length - 1] == ']')
+                    {
+                        string sec = line.Substring(1, line.Length - 2).Trim();
+                        if (sec.StartsWith("Profile:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string pkey = sec.Substring("Profile:".Length).Trim();
+                            target = pkey.Length > 0 ? s.GetOrCreateProfile(pkey) : s;
+                        }
+                        else target = s;
+                        continue;
+                    }
                     int eq = line.IndexOf('=');
                     if (eq <= 0) continue;
                     string key = line.Substring(0, eq).Trim();
@@ -346,56 +508,78 @@ namespace NubMouse
                     int n; long l;
                     switch (key.ToLowerInvariant())
                     {
-                        case "enabled": s.Enabled = ParseBool(val, s.Enabled); break;
-                        case "middlebuttonscroll": s.MiddleButtonScroll = ParseBool(val, s.MiddleButtonScroll); break;
-                        case "speed": if (int.TryParse(val, out n)) s.Speed = Clamp(n, 1, 100); break;
-                        case "horizontalspeed": if (int.TryParse(val, out n)) s.HorizontalSpeed = Clamp(n, 0, 100); break;
-                        case "deadzone": if (int.TryParse(val, out n)) s.Deadzone = Clamp(n, 0, 100); break;
-                        case "clicktimeout": if (int.TryParse(val, out n)) s.ClickTimeout = Clamp(n, 0, 10000); break;
-                        case "notched": s.Notched = ParseBool(val, s.Notched); break;
-                        case "natural": s.Natural = ParseBool(val, s.Natural); break;
-                        case "axislock": s.AxisLock = ParseBool(val, s.AxisLock); break;
+                        case "enabled": if (target == s) s.Enabled = ParseBool(val, s.Enabled); break;
+                        case "middlebuttonscroll": target.MiddleButtonScroll = ParseBool(val, target.MiddleButtonScroll); break;
+                        case "speed": if (int.TryParse(val, out n)) target.Speed = Clamp(n, 1, 100); break;
+                        case "horizontalspeed": if (int.TryParse(val, out n)) target.HorizontalSpeed = Clamp(n, 0, 100); break;
+                        case "deadzone": if (int.TryParse(val, out n)) target.Deadzone = Clamp(n, 0, 100); break;
+                        case "clicktimeout": if (int.TryParse(val, out n)) target.ClickTimeout = Clamp(n, 0, 10000); break;
+                        case "notched": target.Notched = ParseBool(val, target.Notched); break;
+                        case "natural": target.Natural = ParseBool(val, target.Natural); break;
+                        case "axislock": target.AxisLock = ParseBool(val, target.AxisLock); break;
                         case "stickiness":
                             n = ParseStickiness(val);
-                            if (n >= 0) s.Stickiness = n;
+                            if (n >= 0) target.Stickiness = n;
                             break;
-                        case "scrollindicator": s.ScrollIndicator = ParseBool(val, s.ScrollIndicator); break;
-                        case "indicatoroffset": if (int.TryParse(val, out n)) s.IndicatorOffset = Clamp(n, 0, 100); break;
+                        case "scrollindicator": target.ScrollIndicator = ParseBool(val, target.ScrollIndicator); break;
+                        case "indicatoroffset": if (int.TryParse(val, out n)) target.IndicatorOffset = Clamp(n, 0, 100); break;
                         case "indicatorstyle":
                             n = Array.IndexOf(IndicatorStyleNames, val.ToLowerInvariant());
-                            if (n >= 0) s.IndicatorStyle = n;
+                            if (n >= 0) target.IndicatorStyle = n;
                             break;
                         case "indicatorsize":
                             n = ParseIndicatorSize(val);
-                            if (n > 0) s.IndicatorSize = n;
+                            if (n > 0) target.IndicatorSize = n;
                             break;
                         case "dragkeys":
                         case "dragmodifier":    // older name: one of off, alt, ctrl, shift
                             var shortcuts = ParseShortcuts(val);
-                            if (shortcuts != null) s.DragKeys = ShortcutsText(shortcuts);
+                            if (shortcuts != null) target.DragKeys = ShortcutsText(shortcuts);
                             break;
-                        case "keymovetodrag": s.KeyMoveToDrag = ParseBool(val, s.KeyMoveToDrag); break;
-                        case "wheeltodrag": s.WheelToDrag = ParseBool(val, s.WheelToDrag); break;
+                        case "keymovetodrag": target.KeyMoveToDrag = ParseBool(val, target.KeyMoveToDrag); break;
+                        case "wheeltodrag": target.WheelToDrag = ParseBool(val, target.WheelToDrag); break;
                         case "wheeldragkeys":
                             var wsc = ParseShortcuts(val);
-                            if (wsc != null) s.WheelDragKeys = ShortcutsText(wsc);
+                            if (wsc != null) target.WheelDragKeys = ShortcutsText(wsc);
                             break;
-                        case "devicefilter": s.DeviceFilter = val; break;
-                        case "devicemodes": s.DeviceModes = val; break;
-                        case "cancelautoscroll": s.CancelAutoscroll = ParseBool(val, s.CancelAutoscroll); break;
-                        case "hidetrayicon": s.HideTrayIcon = ParseBool(val, s.HideTrayIcon); break;
-                        case "driverwarningshown": s.DriverWarningShown = ParseBool(val, s.DriverWarningShown); break;
-                        case "switchdriver": s.SwitchDriver = ParseBool(val, s.SwitchDriver); break;
-                        case "scrollwhenpaused": s.ScrollWhenPaused = ParseBool(val, s.ScrollWhenPaused); break;
-                        case "restoredriverscroll": s.RestoreDriverScroll = ParseBool(val, s.RestoreDriverScroll); break;
-                        case "checkforupdates": s.CheckForUpdates = ParseBool(val, s.CheckForUpdates); break;
-                        case "autoinstallupdates": s.AutoInstallUpdates = ParseBool(val, s.AutoInstallUpdates); break;
-                        case "runasadmin": s.RunAsAdmin = ParseBool(val, s.RunAsAdmin); break;
-                        case "lastupdatecheck": if (long.TryParse(val, out l)) s.LastUpdateCheck = l; break;
+                        case "devicefilter": if (target == s) s.DeviceFilter = val; break;
+                        case "devicemodes": if (target == s) s.DeviceModes = val; break;
+                        case "cancelautoscroll": target.CancelAutoscroll = ParseBool(val, target.CancelAutoscroll); break;
+                        case "hidetrayicon": if (target == s) s.HideTrayIcon = ParseBool(val, s.HideTrayIcon); break;
+                        case "driverwarningshown": if (target == s) s.DriverWarningShown = ParseBool(val, s.DriverWarningShown); break;
+                        case "switchdriver": if (target == s) s.SwitchDriver = ParseBool(val, s.SwitchDriver); break;
+                        case "scrollwhenpaused": if (target == s) s.ScrollWhenPaused = ParseBool(val, s.ScrollWhenPaused); break;
+                        case "restoredriverscroll": if (target == s) s.RestoreDriverScroll = ParseBool(val, s.RestoreDriverScroll); break;
+                        case "checkforupdates": if (target == s) s.CheckForUpdates = ParseBool(val, s.CheckForUpdates); break;
+                        case "autoinstallupdates": if (target == s) s.AutoInstallUpdates = ParseBool(val, s.AutoInstallUpdates); break;
+                        case "runasadmin": if (target == s) s.RunAsAdmin = ParseBool(val, s.RunAsAdmin); break;
+                        case "lastupdatecheck": if (target == s && long.TryParse(val, out l)) s.LastUpdateCheck = l; break;
                     }
                 }
             }
             catch (Exception) { }
+        }
+
+        static void AppendTuningIni(StringBuilder sb, Settings t)
+        {
+            sb.AppendLine("MiddleButtonScroll=" + (t.MiddleButtonScroll ? 1 : 0));
+            sb.AppendLine("Speed=" + t.Speed);
+            sb.AppendLine("HorizontalSpeed=" + t.HorizontalSpeed);
+            sb.AppendLine("Deadzone=" + t.Deadzone);
+            sb.AppendLine("ClickTimeout=" + t.ClickTimeout);
+            sb.AppendLine("Notched=" + (t.Notched ? 1 : 0));
+            sb.AppendLine("Natural=" + (t.Natural ? 1 : 0));
+            sb.AppendLine("AxisLock=" + (t.AxisLock ? 1 : 0));
+            sb.AppendLine("Stickiness=" + StickinessText(t.Stickiness));
+            sb.AppendLine("ScrollIndicator=" + (t.ScrollIndicator ? 1 : 0));
+            sb.AppendLine("IndicatorOffset=" + t.IndicatorOffset);
+            sb.AppendLine("IndicatorStyle=" + IndicatorStyleNames[t.IndicatorStyle]);
+            sb.AppendLine("IndicatorSize=" + t.IndicatorSize);
+            sb.AppendLine("DragKeys=" + (t.DragKeys ?? ""));
+            sb.AppendLine("KeyMoveToDrag=" + (t.KeyMoveToDrag ? 1 : 0));
+            sb.AppendLine("WheelToDrag=" + (t.WheelToDrag ? 1 : 0));
+            sb.AppendLine("WheelDragKeys=" + (t.WheelDragKeys ?? ""));
+            sb.AppendLine("CancelAutoscroll=" + (t.CancelAutoscroll ? 1 : 0));
         }
 
         void SaveIni(string path)
@@ -405,26 +589,9 @@ namespace NubMouse
                 var sb = new StringBuilder();
                 sb.AppendLine("; NubMouse portable settings");
                 sb.AppendLine("Enabled=" + (Enabled ? 1 : 0));
-                sb.AppendLine("MiddleButtonScroll=" + (MiddleButtonScroll ? 1 : 0));
-                sb.AppendLine("Speed=" + Speed);
-                sb.AppendLine("HorizontalSpeed=" + HorizontalSpeed);
-                sb.AppendLine("Deadzone=" + Deadzone);
-                sb.AppendLine("ClickTimeout=" + ClickTimeout);
-                sb.AppendLine("Notched=" + (Notched ? 1 : 0));
-                sb.AppendLine("Natural=" + (Natural ? 1 : 0));
-                sb.AppendLine("AxisLock=" + (AxisLock ? 1 : 0));
-                sb.AppendLine("Stickiness=" + StickinessText(Stickiness));
-                sb.AppendLine("ScrollIndicator=" + (ScrollIndicator ? 1 : 0));
-                sb.AppendLine("IndicatorOffset=" + IndicatorOffset);
-                sb.AppendLine("IndicatorStyle=" + IndicatorStyleNames[IndicatorStyle]);
-                sb.AppendLine("IndicatorSize=" + IndicatorSize);
-                sb.AppendLine("DragKeys=" + (DragKeys ?? ""));
-                sb.AppendLine("KeyMoveToDrag=" + (KeyMoveToDrag ? 1 : 0));
-                sb.AppendLine("WheelToDrag=" + (WheelToDrag ? 1 : 0));
-                sb.AppendLine("WheelDragKeys=" + (WheelDragKeys ?? ""));
+                AppendTuningIni(sb, this);
                 sb.AppendLine("DeviceFilter=" + (DeviceFilter ?? ""));
                 sb.AppendLine("DeviceModes=" + (DeviceModes ?? ""));
-                sb.AppendLine("CancelAutoscroll=" + (CancelAutoscroll ? 1 : 0));
                 sb.AppendLine("HideTrayIcon=" + (HideTrayIcon ? 1 : 0));
                 sb.AppendLine("DriverWarningShown=" + (DriverWarningShown ? 1 : 0));
                 sb.AppendLine("SwitchDriver=" + (SwitchDriver ? 1 : 0));
@@ -434,6 +601,16 @@ namespace NubMouse
                 sb.AppendLine("AutoInstallUpdates=" + (AutoInstallUpdates ? 1 : 0));
                 sb.AppendLine("RunAsAdmin=" + (RunAsAdmin ? 1 : 0));
                 sb.AppendLine("LastUpdateCheck=" + LastUpdateCheck);
+                if (DeviceProfiles != null)
+                {
+                    foreach (var kv in DeviceProfiles)
+                    {
+                        if (kv.Value == null) continue;
+                        sb.AppendLine();
+                        sb.AppendLine("[Profile:" + kv.Key + "]");
+                        AppendTuningIni(sb, kv.Value);
+                    }
+                }
                 File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
             }
             catch (Exception) { }
@@ -588,6 +765,7 @@ namespace NubMouse
             return v is int ? (int)v != 0 : fallback;
         }
 
+        static int ClampStickiness(int v) { return v <= 0 ? StickinessFixed : Clamp(v, StickinessMin, StickinessMax); }
         static int Clamp(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
     }
 }

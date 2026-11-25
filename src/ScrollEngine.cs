@@ -54,10 +54,12 @@ namespace NubMouse
         enum Kind { Wheel, Click, CancelClick, RawMiddleDown, RawMiddleUp, RawMove }
         struct Work { public Kind Kind; public int A, B; }
 
-        volatile Settings cfg;
+        volatile Settings cfg, texDefaultCfg;
         volatile HashSet<string> allowedDevices;
         volatile Dictionary<string, DeviceMode> deviceModes;
-        volatile bool hasDragOnlyDevice;
+        volatile Dictionary<string, int[][]> profileDragShortcuts = new Dictionary<string, int[][]>(StringComparer.OrdinalIgnoreCase);
+        volatile Dictionary<string, int[][]> profileWheelDragShortcuts = new Dictionary<string, int[][]>(StringComparer.OrdinalIgnoreCase);
+        volatile bool anyKeyMoveToDrag;
         readonly N.HookProc proc;                // fields keep the delegates alive while hooked
         readonly N.WinEventProc winEventProc;
         readonly BlockingCollection<Work> output = new BlockingCollection<Work>();
@@ -70,6 +72,7 @@ namespace NubMouse
 
         // Press state. Written only on the hook thread; pressId is also read by the output thread.
         bool held, scrolling, driverScrolled, passthroughHeld, rawConfirmed, usingRawDeltas, wheelDragging, keyDragging;
+        string activePressDeviceKey;
         int[] wheelDragShortcut, keyDragShortcut;
         UIntPtr wheelDragTimer, keyDragTimer;
         N.POINT anchor;
@@ -100,12 +103,7 @@ namespace NubMouse
 
         public ScrollEngine(Settings settings)
         {
-            cfg = settings.Clone();
-            allowedDevices = cfg.AllowedDeviceKeys();
-            deviceModes = cfg.ParsedDeviceModes();
-            hasDragOnlyDevice = HasDragOnly(deviceModes);
-            dragShortcuts = cfg.DragShortcuts().ToArray();
-            wheelDragShortcuts = cfg.WheelDragShortcuts().ToArray();
+            ApplyConfig(settings);
             proc = HookCallback;
             winEventProc = OnWinEvent;
             outputThread = new Thread(OutputLoop) { IsBackground = true, Name = "NubMouse output" };
@@ -116,13 +114,70 @@ namespace NubMouse
 
         public void Configure(Settings settings)
         {
-            cfg = settings.Clone();
-            allowedDevices = cfg.AllowedDeviceKeys();
-            deviceModes = cfg.ParsedDeviceModes();
-            hasDragOnlyDevice = HasDragOnly(deviceModes);
-            dragShortcuts = cfg.DragShortcuts().ToArray();
-            wheelDragShortcuts = cfg.WheelDragShortcuts().ToArray();
+            ApplyConfig(settings);
             DebugLog.Write("settings changed, " + Describe(cfg));
+        }
+
+        void ApplyConfig(Settings settings)
+        {
+            var next = settings.Clone();
+            var texDef = next.Clone();
+            texDef.MiddleButtonScroll = false;
+            texDef.KeyMoveToDrag = true;
+            if (texDef.DragShortcuts().Count == 0) texDef.DragKeys = "Ctrl+Alt";
+            var modes = next.ParsedDeviceModes();
+            var dsc = next.DragShortcuts().ToArray();
+            var wdsc = next.WheelDragShortcuts().ToArray();
+            var texDsc = texDef.DragShortcuts().ToArray();
+            var pDsc = new Dictionary<string, int[][]>(StringComparer.OrdinalIgnoreCase);
+            var pWdsc = new Dictionary<string, int[][]>(StringComparer.OrdinalIgnoreCase);
+            bool anyKey = true;   // TEX / DragOnly devices default to KeyMoveToDrag + Ctrl+Alt even if global DragKeys is off
+            if (next.DeviceProfiles != null)
+            {
+                foreach (var kv in next.DeviceProfiles)
+                {
+                    if (kv.Value == null) continue;
+                    var sc = kv.Value.DragShortcuts().ToArray();
+                    pDsc[kv.Key] = sc;
+                    pWdsc[kv.Key] = kv.Value.WheelDragShortcuts().ToArray();
+                }
+            }
+            cfg = next;
+            texDefaultCfg = texDef;
+            allowedDevices = next.AllowedDeviceKeys();
+            deviceModes = modes;
+            dragShortcuts = dsc;
+            wheelDragShortcuts = wdsc;
+            texDefaultDragShortcuts = texDsc;
+            profileDragShortcuts = pDsc;
+            profileWheelDragShortcuts = pWdsc;
+            anyKeyMoveToDrag = anyKey;
+        }
+
+        Settings ActiveCfg(string devKey)
+        {
+            Settings p;
+            if (!string.IsNullOrEmpty(devKey) && cfg.DeviceProfiles != null && cfg.DeviceProfiles.TryGetValue(devKey, out p) && p != null)
+                return p;
+            if (!string.IsNullOrEmpty(devKey) && (RawInputDevices.IsFirmwareScrollDevice(devKey) || ModeFor(devKey) == DeviceMode.DragOnly))
+                return texDefaultCfg;
+            return cfg;
+        }
+
+        int[][] DragShortcutsFor(string devKey)
+        {
+            int[][] sc;
+            if (!string.IsNullOrEmpty(devKey) && profileDragShortcuts.TryGetValue(devKey, out sc)) return sc;
+            if (!string.IsNullOrEmpty(devKey) && (RawInputDevices.IsFirmwareScrollDevice(devKey) || ModeFor(devKey) == DeviceMode.DragOnly))
+                return texDefaultDragShortcuts;
+            return dragShortcuts;
+        }
+
+        int[][] WheelDragShortcutsFor(string devKey)
+        {
+            int[][] sc;
+            if (!string.IsNullOrEmpty(devKey) && profileWheelDragShortcuts.TryGetValue(devKey, out sc)) return sc;
+            return wheelDragShortcuts;
         }
 
         static bool HasDragOnly(Dictionary<string, DeviceMode> map)
@@ -143,6 +198,7 @@ namespace NubMouse
 
         int[][] dragShortcuts = new int[0][];
         int[][] wheelDragShortcuts = new int[0][];
+        int[][] texDefaultDragShortcuts = new int[0][];
 
         /// The first shortcut whose keys are all held down right now, or null.
         public static int[] HeldShortcut(int[][] shortcuts)
@@ -295,7 +351,7 @@ namespace NubMouse
                 int msg = wParam.ToInt32();
                 // Fast path: pointer movement without the middle button held is by far the most
                 // common event and never interesting (unless KeyMoveToDrag or a DragOnly device is active).
-                bool relevant = msg == N.WM_MOUSEMOVE ? (held || ((cfg.KeyMoveToDrag || hasDragOnlyDevice) && dragShortcuts.Length > 0))
+                bool relevant = msg == N.WM_MOUSEMOVE ? (held || anyKeyMoveToDrag)
                     : msg == N.WM_MBUTTONDOWN || msg == N.WM_MBUTTONUP || msg == N.WM_MOUSEWHEEL || msg == N.WM_MOUSEHWHEEL;
                 // Ignore injected input: that includes our own SendInput output, which comes back
                 // through this hook, and input from remote-control / macro tools.
@@ -343,7 +399,8 @@ namespace NubMouse
             if ((raw.mouse.usButtonFlags & N.RI_MOUSE_MIDDLE_BUTTON_DOWN) != 0 && held && !rawConfirmed)
             {
                 rawConfirmed = true;
-                if (ModeFor(devKey) != DeviceMode.Full)
+                activePressDeviceKey = devKey;
+                if (ModeFor(devKey) != DeviceMode.Full || !ActiveCfg(devKey).MiddleButtonScroll)
                 {
                     // Middle button came from an ignored or drag-only device (e.g. external mouse or
                     // TEX Shura): replay the press so the user gets native middle-click / middle-drag.
@@ -359,7 +416,8 @@ namespace NubMouse
             if (held && !driverScrolled && (raw.mouse.usFlags & N.MOUSE_MOVE_ABSOLUTE) == 0 &&
                 (raw.mouse.lLastX != 0 || raw.mouse.lLastY != 0))
             {
-                if (ModeFor(devKey) != DeviceMode.Full) return;
+                if (ModeFor(devKey) != DeviceMode.Full || !ActiveCfg(devKey).MiddleButtonScroll) return;
+                activePressDeviceKey = devKey;
                 usingRawDeltas = true;
                 OnMoveWhileHeld(raw.mouse.lLastX, raw.mouse.lLastY);
             }
@@ -367,13 +425,13 @@ namespace NubMouse
 
         /// The indicator state right now. Notifications can arrive out of order (they go through
         /// the thread pool), so the receiver should show this rather than the mode it was sent.
-        public ScrollMode VisualMode { get { return cfg.ScrollIndicator ? visualMode : ScrollMode.None; } }
+        public ScrollMode VisualMode { get { return ActiveCfg(activePressDeviceKey ?? lastActiveDeviceKey).ScrollIndicator ? visualMode : ScrollMode.None; } }
 
         void NotifyVisual(ScrollMode mode)
         {
             if (visualMode == mode) return;
             visualMode = mode;
-            if (mode != ScrollMode.None && !cfg.ScrollIndicator) return;
+            if (mode != ScrollMode.None && !ActiveCfg(activePressDeviceKey ?? lastActiveDeviceKey).ScrollIndicator) return;
             var h = ScrollVisualChanged;
             if (h != null)
             {
@@ -388,11 +446,12 @@ namespace NubMouse
             switch (msg)
             {
                 case N.WM_MBUTTONDOWN:
+                    var downKey = lastActiveDeviceKey;
                     // When middle-button scrolling is turned off (e.g. TEX Shura using only 3D/CAD
                     // drag shortcuts), leave physical middle clicks completely untouched.
-                    if (!cfg.MiddleButtonScroll) return false;
+                    if (!ActiveCfg(downKey).MiddleButtonScroll) return false;
                     // Holding all the keys of any native-drag shortcut passes a middle-button drag straight through.
-                    int[] shortcut = HeldShortcut(dragShortcuts);
+                    int[] shortcut = HeldShortcut(DragShortcutsFor(downKey));
                     if (shortcut != null)
                     {
                         passthroughHeld = true;
@@ -402,6 +461,7 @@ namespace NubMouse
                     // Windows can't take back a delivered press, so hold it until we know
                     // whether this is a click or a scroll.
                     held = true;
+                    activePressDeviceKey = downKey;
                     scrolling = driverScrolled = passthroughHeld = rawConfirmed = usingRawDeltas = false;
                     anchor.x = Marshal.ReadInt32(m, N.MSLL_PT_X);
                     anchor.y = Marshal.ReadInt32(m, N.MSLL_PT_Y);
@@ -444,7 +504,7 @@ namespace NubMouse
                     {
                         // A press held for a long time without scrolling is a cancelled scroll,
                         // not a click.
-                        int limit = cfg.ClickTimeout;
+                        int limit = ActiveCfg(activePressDeviceKey ?? lastActiveDeviceKey).ClickTimeout;
                         if (limit == 0 || heldMs <= (uint)limit) { QueueClick(); result = "click"; }
                         else result = "no click (held longer than clicktimeout)";
                     }
@@ -459,10 +519,12 @@ namespace NubMouse
                     if (!held)
                     {
                         // Optional: hold a drag shortcut + move pointer (no middle button) -> real middle-drag.
-                        var mode = ModeFor(lastActiveDeviceKey);
-                        if ((cfg.KeyMoveToDrag || mode == DeviceMode.DragOnly) && mode != DeviceMode.Ignore && !passthroughHeld && !keyDragging)
+                        var devKey = lastActiveDeviceKey;
+                        var mode = ModeFor(devKey);
+                        var ac = ActiveCfg(devKey);
+                        if ((ac.KeyMoveToDrag || mode == DeviceMode.DragOnly) && mode != DeviceMode.Ignore && !passthroughHeld && !keyDragging)
                         {
-                            int[] sc = HeldShortcut(dragShortcuts);
+                            int[] sc = HeldShortcut(DragShortcutsFor(devKey));
                             if (sc != null)
                             {
                                 keyDragging = true;
@@ -470,7 +532,7 @@ namespace NubMouse
                                 output.Add(new Work { Kind = Kind.RawMiddleDown });
                                 if (keyDragTimer == UIntPtr.Zero)
                                     keyDragTimer = N.SetTimer(IntPtr.Zero, UIntPtr.Zero, 30, IntPtr.Zero);
-                                DebugLog.Write("key-move-to-drag started with {0} on {1}", Settings.ShortcutText(sc), lastActiveDeviceKey ?? "(unknown)");
+                                DebugLog.Write("key-move-to-drag started with {0} on {1}", Settings.ShortcutText(sc), devKey ?? "(unknown)");
                             }
                         }
                         return false;          // pass raw movement straight through for smooth 360° drag
@@ -484,10 +546,12 @@ namespace NubMouse
                     lastWheelTick = Environment.TickCount;
                     // Optional: convert hardware wheel events (from firmware-scroll keyboards like
                     // TEX Shura's M_FN) into a synthetic middle-button drag while a drag shortcut is held.
-                    if (!held && cfg.WheelToDrag && ModeFor(lastActiveDeviceKey) != DeviceMode.Ignore)
+                    var wKey = lastActiveDeviceKey;
+                    if (!held && ActiveCfg(wKey).WheelToDrag && ModeFor(wKey) != DeviceMode.Ignore)
                     {
                         {
-                            var wheelSc = wheelDragShortcuts.Length > 0 ? wheelDragShortcuts : dragShortcuts;
+                            var wsc = WheelDragShortcutsFor(wKey);
+                            var wheelSc = wsc.Length > 0 ? wsc : DragShortcutsFor(wKey);
                             int[] sc = wheelDragging ? (IsShortcutHeld(wheelDragShortcut) ? wheelDragShortcut : null) : HeldShortcut(wheelSc);
                             if (sc != null)
                             {
@@ -533,7 +597,7 @@ namespace NubMouse
             dbgMoves++;
             // A move with no offset most likely means the pointer is pinned against a screen edge.
             if (dx == 0 && dy == 0) { dbgStill++; DebugLog.Write("  move with no offset (pointer at a screen edge?)"); return; }
-            var c = cfg;
+            var c = ActiveCfg(activePressDeviceKey ?? lastActiveDeviceKey);
 
             travel += Math.Abs(dx) + Math.Abs(dy);
             recentX = recentX * AxisDecay + Math.Abs(dx);
@@ -609,7 +673,7 @@ namespace NubMouse
 
         void QueueClick()
         {
-            output.Add(new Work { Kind = Kind.Click, A = pressId, B = cfg.CancelAutoscroll ? 1 : 0 });
+            output.Add(new Work { Kind = Kind.Click, A = pressId, B = ActiveCfg(activePressDeviceKey ?? lastActiveDeviceKey).CancelAutoscroll ? 1 : 0 });
         }
 
         // ---- Output ----------------------------------------------------------------------

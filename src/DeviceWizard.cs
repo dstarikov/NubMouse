@@ -63,7 +63,7 @@ namespace NubMouse
                 Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false,
                 BackColor = CardBack, Padding = new Padding(S(20), S(14), S(20), S(12))
             };
-            header.Controls.Add(new Label { Text = "Identify & configure your pointing devices", Font = new Font(Font.FontFamily, Font.Size * 1.25f, FontStyle.Bold), AutoSize = true, Margin = new Padding(0, 0, 0, S(4)) });
+            header.Controls.Add(new Label { Text = "Identify & configure your pointing devices", UseMnemonic = false, Font = new Font(Font.FontFamily, Font.Size * 1.25f, FontStyle.Bold), AutoSize = true, Margin = new Padding(0, 0, 0, S(4)) });
             header.Controls.Add(new Label
             {
                 Text = "Wiggle or click any TrackPoint, TEX keyboard, or mouse to see it light up below. Known devices are pre-configured automatically; pick a type for any unknown device.",
@@ -72,7 +72,7 @@ namespace NubMouse
             liveLabel = new Label
             {
                 Text = "Waiting for movement\u2026 wiggle a mouse or TrackPoint.",
-                AutoSize = true, ForeColor = ActiveBorder, Font = boldFont, Margin = Padding.Empty
+                AutoSize = true, UseMnemonic = false, ForeColor = ActiveBorder, Font = boldFont, Margin = Padding.Empty
             };
             header.Controls.Add(liveLabel);
             var headerLine = new Panel { Dock = DockStyle.Top, Height = 1, BackColor = CardBorder };
@@ -236,19 +236,19 @@ namespace NubMouse
         void Apply()
         {
             var map = new Dictionary<string, DeviceMode>(StringComparer.OrdinalIgnoreCase);
-            bool anyDragOnly = false;
             foreach (var r in rows)
             {
                 var mode = (DeviceMode)Math.Max(0, r.Choice.SelectedIndex);
                 if (mode != DeviceMode.Full) map[r.Device.Key] = mode;
-                if (mode == DeviceMode.DragOnly) anyDragOnly = true;
             }
             string formatted = Settings.FormatDeviceModes(map);
             host.Change(s =>
             {
                 s.DeviceModes = formatted;
                 s.DeviceFilter = "";
-                if (anyDragOnly && s.DragShortcuts().Count == 0) s.DragKeys = "Ctrl+Alt";
+                s.MiddleButtonScroll = true;
+                s.AxisLock = true;
+                s.KeyMoveToDrag = false;
             });
         }
 
