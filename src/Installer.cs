@@ -54,6 +54,10 @@ namespace NubMouse
 
         public static string InstalledExe(InstallScope scope) { return Path.Combine(InstallDir(scope), ExeName); }
 
+        /// Where an elevated copy downloads updates: inside the all-users install, which only
+        /// administrators can write to (see Updater.UpdateDir).
+        public static string ElevatedUpdateDir { get { return Path.Combine(InstallDir(InstallScope.AllUsers), "update"); } }
+
         static string ShortcutPath(InstallScope scope)
         {
             var folder = scope == InstallScope.AllUsers ? Environment.SpecialFolder.CommonPrograms : Environment.SpecialFolder.Programs;
@@ -140,6 +144,15 @@ namespace NubMouse
         {
             bool admin = Settings.Load().RunAsAdmin;
             bool hadStartup = admin ? AdminMode.StartsAtLogon() : StartsWithWindows;
+            if (admin && scope != InstallScope.AllUsers)
+            {
+                // Administrator mode needs the all-users copy (see AdminMode), so a per-user
+                // install turns it off and uses the normal startup entry instead.
+                var s = Settings.Load();
+                s.RunAsAdmin = false;
+                s.Save();
+                admin = false;
+            }
 
             // Copy first: a running copy can be replaced (it is renamed aside), and if the copy
             // fails or UAC is declined, the old version simply keeps running.
@@ -225,7 +238,7 @@ namespace NubMouse
                 string flag = scope == InstallScope.AllUsers ? " --all-users" : "";
                 k.SetValue("DisplayName", AppName);
                 k.SetValue("DisplayVersion", CurrentVersion.ToString());
-                k.SetValue("Publisher", "NubMouse contributors");
+                k.SetValue("Publisher", "dstarikov");
                 k.SetValue("DisplayIcon", exe);
                 k.SetValue("InstallLocation", dir);
                 k.SetValue("URLInfoAbout", RepoUrl);
@@ -242,6 +255,18 @@ namespace NubMouse
         public static void CleanUpOldFiles()
         {
             TryDelete(CurrentExe + ".old");
+            DeleteTempUpdateFolders();
+            // Only an elevated copy can remove the elevated update folder in Program Files.
+            if (IsElevated && Directory.Exists(ElevatedUpdateDir) && !SamePath(Path.GetDirectoryName(CurrentExe), ElevatedUpdateDir))
+                try { Directory.Delete(ElevatedUpdateDir, true); } catch (Exception) { }
+        }
+
+        /// Deletes %TEMP%\NubMouse-update-* folders, except the one this exe runs from. Skipped
+        /// when elevated: any program running as the user can write to %TEMP% and could plant a
+        /// link there to make an elevated recursive delete remove something else.
+        static void DeleteTempUpdateFolders()
+        {
+            if (IsElevated) return;
             try
             {
                 foreach (var d in Directory.GetDirectories(Path.GetTempPath(), "NubMouse-update-*"))
@@ -270,6 +295,8 @@ namespace NubMouse
             AdminMode.DeleteTask();
             Settings.DeleteStored();
             Notifications.Unregister();
+            if (!IsElevated) TryDelete(DebugLog.DefaultPath);   // an elevated copy's log is in the install folder
+            DeleteTempUpdateFolders();
 
             // No "done" message here: this process usually runs from the folder being removed,
             // so it has to exit promptly for the delayed folder delete to succeed.
@@ -281,6 +308,8 @@ namespace NubMouse
         {
             TryDelete(ShortcutPath(scope));
             try { Root(scope).DeleteSubKeyTree(UninstallKey, false); } catch (Exception) { }
+            // Every user's administrator-mode task starts this copy, so none is useful without it.
+            if (scope == InstallScope.AllUsers && IsElevated) AdminMode.DeleteAllTasksElevated();
 
             string dir = InstallDir(scope);
             if (!Directory.Exists(dir)) return;

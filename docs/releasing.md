@@ -26,6 +26,9 @@ artifact, so any commit's build can be downloaded from its run page.
    - `NubMouse-<tag>.zip` (the exe plus README, CHANGELOG and LICENSE)
    - `SHA256SUMS.txt`
 
+   The exe and zip also get a build attestation (Sigstore-signed provenance stored on GitHub),
+   checked with `gh attestation verify NubMouse.exe -R dstarikov/NubMouse`.
+
    Release notes are generated from the commits and pull requests since the previous tag.
 
 Tags with a pre-release suffix (for example `v0.2.0-beta.1`) are published as pre-releases.

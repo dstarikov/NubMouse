@@ -19,11 +19,17 @@ namespace NubMouse
 
         public static bool On { get { return queue != null; } }
         public static string FilePath { get; private set; }
+        public static string DefaultPath { get { return Path.Combine(Path.GetTempPath(), "NubMouse-debug.log"); } }
 
         public static void Start()
         {
             if (queue != null) return;
-            FilePath = Path.Combine(Path.GetTempPath(), "NubMouse-debug.log");
+            // In administrator mode the log goes beside the exe in Program Files, not to %TEMP%:
+            // any program running as the user can write to %TEMP% and could plant a link there
+            // to make this elevated process write over another file.
+            FilePath = Installer.IsElevated && AdminMode.IsAllowed(Installer.CurrentExe)
+                ? Path.Combine(Path.GetDirectoryName(Installer.CurrentExe), "debug.log")
+                : DefaultPath;
             queue = new BlockingCollection<string>();
             writer = new Thread(WriteLoop) { IsBackground = true, Name = "NubMouse log" };
             writer.Start();

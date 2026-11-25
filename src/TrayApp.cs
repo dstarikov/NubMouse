@@ -400,6 +400,17 @@ namespace NubMouse
         {
             if (!settings.RunAsAdmin)
             {
+                if (!AdminMode.IsAllowed(Installer.CurrentExe))
+                {
+                    // The elevated task only starts the copy in Program Files (see AdminMode).
+                    if (!Ui.Confirm("Run as administrator needs NubMouse installed for all users.\n\n" +
+                                    "It then runs from Program Files, where only administrators can change it, so no " +
+                                    "other program can replace it with something that would start with administrator rights.\n\n" +
+                                    "Reinstall NubMouse for all users now? Windows asks for permission, and NubMouse " +
+                                    "restarts. Then turn on Run as administrator again.")) return;
+                    Installer.LaunchUnelevated(Installer.CurrentExe, "--install --all-users" + (StartsWithWindows ? "" : " --no-startup"));
+                    return;
+                }
                 if (!Ui.Confirm("Run NubMouse as administrator?\n\n" +
                                 "This lets it scroll in windows that run as administrator (admin terminals, Task Manager, " +
                                 "some installers). Windows asks for permission once to set it up; after that it starts " +
@@ -558,9 +569,19 @@ namespace NubMouse
             return null;
         }
 
+        /// Opens a link or file with its default app. When elevated, it goes through Explorer so
+        /// the app starts unelevated: file and link associations live in HKCU, which any
+        /// program running as the user can change, so opening them elevated would let such a
+        /// program start itself with administrator rights.
         static void Open(string target)
         {
-            try { Process.Start(new ProcessStartInfo(target) { UseShellExecute = true }); }
+            try
+            {
+                if (Installer.IsElevated)
+                    Process.Start(new ProcessStartInfo("explorer.exe", "\"" + target + "\"") { UseShellExecute = false });
+                else
+                    Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+            }
             catch (Exception ex) { Ui.Error(ex.Message); }
         }
 

@@ -288,6 +288,10 @@ Windows does not let a normal program send input to windows running as administr
 default scrolling won't work in, for example, an elevated terminal or Task Manager. Tick
 **Run as administrator** in the tray menu (off by default) to fix that:
 
+- It needs an all-users install (in Program Files). On a per-user install, NubMouse offers to
+  reinstall itself for all users first. The elevated task only ever starts that copy, because
+  only administrators can change it; a per-user copy could be replaced by any program running
+  as you, which would then start with administrator rights without a prompt.
 - Windows asks for permission once. NubMouse then creates a scheduled task for your
   account, *NubMouse elevated - (your user name)*, with *Run with highest privileges*,
   and restarts through it.
@@ -405,6 +409,14 @@ details.
 Every push and pull request is built by GitHub Actions. Pushing a tag like `v0.2.0` builds the
 exe with that version and publishes a GitHub release with `NubMouse.exe`, a zip, and
 SHA-256 checksums. See [docs/releasing.md](docs/releasing.md).
+
+Each release also has a signed build attestation, so you can check that a downloaded
+`NubMouse.exe` was built by this repository's workflow from a specific commit, using the
+[GitHub CLI](https://cli.github.com/):
+
+```powershell
+gh attestation verify NubMouse.exe -R dstarikov/NubMouse
+```
 
 ## License
 

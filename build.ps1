@@ -46,6 +46,7 @@ $info = Join-Path ([IO.Path]::GetTempPath()) ("NubMouse.AssemblyInfo.{0}.cs" -f 
 using System.Reflection;
 [assembly: AssemblyTitle("NubMouse")]
 [assembly: AssemblyProduct("NubMouse")]
+[assembly: AssemblyCompany("dstarikov")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 dstarikov. MIT License.")]
 [assembly: AssemblyDescription("ThinkPad-style middle click and TrackPoint scrolling for Windows")]
 [assembly: AssemblyVersion("$numeric")]

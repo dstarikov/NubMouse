@@ -695,7 +695,7 @@ namespace NubMouse
                       v => { if (v != host.StartsWithWindows) host.ToggleStartup(); LoadValues(); });
                 Check(list, "Run as administrator (scroll in admin windows)",
                       "Lets it scroll in windows that run as administrator (admin terminals, Task Manager, some installers). " +
-                      "Windows asks for permission once. NubMouse restarts to switch.",
+                      "Needs an all-users install. Windows asks for permission once. NubMouse restarts to switch.",
                       () => settings.RunAsAdmin, v => { if (v != settings.RunAsAdmin) host.ToggleAdmin(); if (!IsDisposed) LoadValues(); });
             }
             Check(list, "Show the tray icon",

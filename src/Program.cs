@@ -7,7 +7,7 @@
 //   NubMouse.exe --toggle | --enable | --disable | --show | --exit | --fix-driver | --driver-settings | --settings
 //   NubMouse.exe --install [--all-users] [--no-startup] [--check-updates | --auto-update] [--quiet]
 //   NubMouse.exe --uninstall [--all-users] [--quiet]
-//   NubMouse.exe --admin-task create --user SID --exe PATH [--at-logon] | --admin-task delete   (internal, elevated)
+//   NubMouse.exe --admin-task create --user SID --exe PATH [--at-logon] | --admin-task delete --user SID   (internal, elevated)
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -154,9 +154,6 @@ namespace NubMouse
         {
             try
             {
-                if (args.Length > 1 && args[1].Equals("delete", StringComparison.OrdinalIgnoreCase))
-                    return AdminMode.DeleteTask() ? 0 : 1;
-
                 string user = null, exe = null; bool atLogon = false;
                 for (int i = 2; i < args.Length; i++)
                 {
@@ -164,6 +161,10 @@ namespace NubMouse
                     else if (args[i] == "--exe" && i + 1 < args.Length) exe = args[++i];
                     else if (args[i] == "--at-logon") atLogon = true;
                 }
+
+                if (args.Length > 1 && args[1].Equals("delete", StringComparison.OrdinalIgnoreCase))
+                    return (user != null ? AdminMode.DeleteTaskElevated(user) : AdminMode.DeleteTask()) ? 0 : 1;
+
                 if (user == null || exe == null) return 2;
                 return AdminMode.CreateTaskElevated(exe, atLogon, user) ? 0 : 1;
             }

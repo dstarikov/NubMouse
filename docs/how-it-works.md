@@ -249,6 +249,27 @@ limit. Registering, changing and deleting it needs elevation, so those steps run
 process started with a UAC prompt (`--admin-task create|delete`); starting it with
 `schtasks /Run` doesn't.
 
+The task only ever starts the all-users copy in Program Files. A per-user copy lives in
+`%LOCALAPPDATA%`, which any program running as the user can write to, so a task pointing there
+would let that program swap the exe and get administrator rights without a prompt. The elevated
+`--admin-task create` step refuses any other path, and an unelevated start only hands over to
+the task if it points at that copy. Turning the mode on from a per-user install offers to
+reinstall for all users first, and reinstalling per user turns the mode off.
+
+For the same reason, nothing the elevated side uses lives in `%TEMP%`. The task's XML is
+written beside the exe in Program Files before it is registered, and an elevated copy downloads
+updates to `Program Files\NubMouse\update`, so a normal program can't swap the file between the
+checksum check and the elevated launch. The task is named after the user whose SID the elevated
+step was given, so it is found again even when a standard user elevated with an administrator's
+password.
+
+The elevated copy also keeps away from anything else a normal program could tamper with. Links
+and files it opens (Help, the debug log, a release page) go through Explorer and open
+unelevated, because file and link associations live in `HKCU`. Its debug log is written beside
+the exe instead of to `%TEMP%`, and it leaves `%TEMP%\NubMouse-update-*` cleanup to unelevated
+starts. The settings it reads from `HKCU` are numbers, shortcuts and device lists, never paths
+or commands. Removing the all-users copy deletes every user's task, since they all start it.
+
 Every unelevated start checks the setting and hands over to the task, so the Start menu shortcut,
 restarts after updates and logon all end up elevated. "Start with Windows" becomes the task's
 logon trigger in this mode. The elevated copy allows the remote-control messages from

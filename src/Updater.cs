@@ -66,14 +66,32 @@ namespace NubMouse
             return info.Version > Installer.CurrentVersion ? info : null;
         }
 
+        /// Where a release is downloaded to. An elevated copy launches the download elevated, so
+        /// it must not sit in %TEMP%: any program running as the user can write there, and could
+        /// swap the exe (or plant a DLL beside it) between the checksum check and the launch. It
+        /// uses a folder inside the all-users install in Program Files instead, which only
+        /// administrators can write to. An unelevated copy launches it unelevated, so anything
+        /// that could tamper with it in %TEMP% already runs with the same rights.
+        static string UpdateDir(Version version)
+        {
+            string dir;
+            if (Installer.IsElevated)
+            {
+                dir = Installer.ElevatedUpdateDir;
+                if (Directory.Exists(dir)) Directory.Delete(dir, true);   // start from a clean folder
+            }
+            else dir = Path.Combine(Path.GetTempPath(), "NubMouse-update-" + version);
+            Directory.CreateDirectory(dir);
+            return dir;
+        }
+
         /// Downloads and verifies the release exe; returns its local path.
         public static string Download(UpdateInfo u)
         {
             if (u.ExeUrl == null || u.SumsUrl == null)
                 throw new InvalidDataException("The release is missing " + Installer.ExeName + " or SHA256SUMS.txt.");
 
-            string dir = Path.Combine(Path.GetTempPath(), "NubMouse-update-" + u.Version);
-            Directory.CreateDirectory(dir);
+            string dir = UpdateDir(u.Version);
             string exe = Path.Combine(dir, Installer.ExeName);
 
             string sums;
