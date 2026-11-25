@@ -26,7 +26,7 @@ param(
     [ValidateSet("neutral", "x64", "arm64", "all")]
     [string]$Arch = "all",
     [string]$IdentityName = "dstarikov.NubMouse",
-    [string]$Publisher = "CN=dstarikov",
+    [string]$Publisher = "CN=5CEB058C-D861-4834-BC26-FE4712BCA5BB",
     [string]$PublisherDisplayName = "dstarikov",
     [string]$ExePath,
     [string]$OutDir = "dist"

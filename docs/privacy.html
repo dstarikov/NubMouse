@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy — NubMouse</title>
+  <meta name="description" content="Privacy Policy for NubMouse — zero personal data collection, no keyboard hooks, no telemetry.">
+  <link rel="canonical" href="https://dstarikov.github.io/NubMouse/privacy.html">
+  <link rel="icon" type="image/png" href="images/app-icon.png">
+  <style>
+    :root {
+      --bg: #0c0d10;
+      --bg-card: #181b22;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.16);
+      --text: #f3f4f6;
+      --muted: #b4bac6;
+      --red: #e61e28;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #ff8a90; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      font-family: Consolas, "Cascadia Code", ui-monospace, monospace;
+      font-size: 0.88em;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 5px;
+      padding: 1px 6px;
+      color: #e5e7eb;
+    }
+    .wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 48px 24px 64px;
+    }
+    .top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 32px;
+      gap: 16px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text);
+      font-weight: 700;
+      font-size: 1.08rem;
+    }
+    .brand img { width: 30px; height: 30px; border-radius: 7px; }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-strong);
+      border-radius: 16px;
+      padding: 32px;
+    }
+    h1 { margin: 0 0 8px; font-size: 1.9rem; letter-spacing: -0.02em; }
+    .updated { color: #9ca3af; font-size: 0.88rem; margin: 0 0 24px; }
+    h2 { margin: 26px 0 8px; font-size: 1.1rem; color: var(--text); }
+    p, li { color: var(--muted); font-size: 0.96rem; }
+    p { margin: 0 0 12px; }
+    ul { margin: 0 0 12px; padding-left: 20px; }
+    li { margin-bottom: 6px; }
+    .summary {
+      background: rgba(74, 222, 128, 0.08);
+      border: 1px solid rgba(74, 222, 128, 0.25);
+      border-radius: 10px;
+      padding: 14px 16px;
+      color: #d1fae5;
+      font-size: 0.94rem;
+      margin-bottom: 22px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <a class="brand" href="./">
+        <img src="images/app-icon.png" alt="NubMouse icon">
+        <span>NubMouse</span>
+      </a>
+      <a href="./">&larr; Back to NubMouse</a>
+    </div>
+
+    <main class="card">
+      <h1>Privacy Policy</h1>
+      <p class="updated">Last updated: 2026</p>
+
+      <div class="summary">
+        <strong>Short version:</strong> NubMouse does not collect, store, transmit, or share any personal data, usage analytics, or telemetry.
+      </div>
+
+      <h2>1. Input handling</h2>
+      <p>
+        NubMouse processes mouse movement, wheel, and middle-button events locally in memory solely to provide TrackPoint and pointing-stick scrolling, middle-click, and optional 3D/CAD drag shortcuts.
+      </p>
+      <ul>
+        <li>NubMouse <strong>never installs a keyboard hook</strong>.</li>
+        <li>NubMouse <strong>never logs keystrokes or window titles</strong>.</li>
+        <li>It only checks <code>GetAsyncKeyState</code> locally for the specific drag shortcut key(s) you configure (and briefly while recording a custom shortcut in Settings).</li>
+      </ul>
+
+      <h2>2. Local settings &amp; optional debug logs</h2>
+      <p>
+        Your preferences (scroll speed, axis lock, per-device modes, and profiles) are stored locally on your PC under <code>HKEY_CURRENT_USER\Software\NubMouse</code> (or in a local <code>NubMouse.ini</code> file in portable mode).
+      </p>
+      <p>
+        If you explicitly turn on the optional debug log for troubleshooting, it writes mouse-event diagnostics locally to <code>%TEMP%\NubMouse-debug.log</code> and is never uploaded anywhere automatically.
+      </p>
+
+      <h2>3. Network access</h2>
+      <ul>
+        <li><strong>Microsoft Store build:</strong> Makes <strong>zero</strong> network requests (updates are handled by the Microsoft Store).</li>
+        <li><strong>Standalone GitHub build:</strong> Makes no network requests unless you explicitly enable automatic update checks or click <em>Check for updates now</em>, which only contacts GitHub to check and download releases.</li>
+      </ul>
+
+      <h2>4. Open source &amp; contact</h2>
+      <p>
+        NubMouse is free and open source under the MIT License. You can inspect the complete source code at
+        <a href="https://github.com/dstarikov/NubMouse">github.com/dstarikov/NubMouse</a>.
+        For privacy questions or support, please open an issue at
+        <a href="https://github.com/dstarikov/NubMouse/issues">github.com/dstarikov/NubMouse/issues</a>.
+      </p>
+    </main>
+  </div>
+</body>
+</html>
