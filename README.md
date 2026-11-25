@@ -8,6 +8,7 @@
   ThinkPad &amp; pointing-stick middle-click, smooth scrolling, and 3D/CAD middle-drag for Windows.<br>
   <strong><a href="https://dstarikov.github.io/NubMouse/">Website &amp; Download</a></strong> ·
   <a href="https://github.com/dstarikov/NubMouse/releases/latest">Latest Release</a> ·
+  <a href="#prompt-suggestion-audit-it-with-your-ai-coding-agent">Audit it with AI</a> ·
   <a href="docs/packaging.md">Packaging</a>
 </p>
 
@@ -25,12 +26,15 @@ on each app supporting the TrackPoint driver's own scrolling mode.
 
 ## Why
 
-When the TrackPoint driver is in scrolling mode (the default), you lose standard middle-click —
-you can't open links in background tabs, close tabs, or use middle-click actions in apps without
-giving up scrolling. Even for scrolling itself, how well the driver works depends on the driver
-version and the app: some apps don't scroll at all, and others only scroll in coarse steps.
-NubMouse takes over the middle button in software instead, so you get a working middle click,
-smooth scrolling, and optional native middle-drag everywhere.
+On **Linux** (`libinput`), TrackPoints work the way you'd expect out of the box: tap the
+middle button to middle-click (open links in background tabs, close tabs), or hold it and push
+the TrackPoint to scroll. On Windows, ThinkPad drivers have historically forced a choice: when
+the driver is in scrolling mode (the default), you lose standard middle-click completely. Older
+Synaptics ThinkPads relied on classic `TPMiddle` to get both, which didn't carry over cleanly to
+modern ELAN and HID drivers. Even for scrolling itself, how well the driver works depends on the
+driver version and the app: some apps don't scroll at all, and others only scroll in coarse
+steps. NubMouse takes over the middle button in software instead, bringing that Linux / TPMiddle
+feel to modern Windows 10/11 ThinkPads with smooth scrolling and optional native middle-drag.
 
 ### Why another tool?
 
@@ -152,10 +156,11 @@ few newer ones still use Synaptics. To check yours, look in *Device Manager → 
 pointing devices* or at the name of Lenovo's driver download for it (*ELAN UltraNav* vs.
 *Synaptics*).
 
-**Tested on:** ThinkPad P16 Gen 3 (2025, ELAN driver).
+**Tested on:**
+- **ThinkPad P16 Gen 3** (2025, ELAN TrackPoint driver) — automatic driver switching, smooth 2D scrolling, middle-click, and 3D drag passthrough.
+- **TEX Shura** (USB `04D9:0532` and Bluetooth LE `04D9:2521`) — auto-detected in `3D drag only` mode, leaving hardware `M_FN` scrolling untouched while unlocking smooth 360° middle-drag via `Ctrl+Alt` + nub movement.
 
-External TrackPoint keyboards such as the *ThinkPad TrackPoint Keyboard II* handle the middle
-button in their own firmware and haven't been tested.
+External pointing-stick keyboards such as the **TEX Shinobi** (`04D9:0407`) and **ThinkPad TrackPoint Keyboard II** (turn off "ThinkPad Preferred Scrolling" in Lenovo's companion app), as well as **Dell TrackStick**, **HP PointStick**, and custom **QMK / ZMK** pointing-stick keyboards are also supported through standard Windows mouse input and the **Device setup wizard**.
 
 ### Compatibility reports
 
@@ -195,28 +200,9 @@ The icon is a key cap with a TrackPoint dot: **red** while active, **grey** whil
 next to a test pad. Changes apply as you make them, and number boxes take values past the
 sliders' ends (e.g. speed up to 100). It has two tabs.
 
-**Scroll & click** — everything you tune by feel:
+**General** (first tab) — set once and leave:
 
-- **Scrolling:** vertical and horizontal speed, natural direction, notched scrolling, **Lock to
-  one direction** and its **Stickiness** (a slider from 1.2× to 4.0× plus Fixed, with the Loose,
-  Normal, Firm and Fixed presets marked under it; click a name to jump to it), and the
-  **scroll-direction indicator**: while scrolling, the pointer turns into a small direction
-  indicator. Pick its look (Dark, Light, Minimal or TrackPoint) and size (16 to 64 px) with a
-  live preview; placing it beside the pointer instead is under **Advanced**.
-- **Middle click:** deadzone, click time limit, and autoscroll cancelling.
-- **Native drag (for 3D modeling apps):** Blender, CAD and other 3D apps rotate and pan by
-  dragging with the middle button. Hold a shortcut as you press the middle button to give the
-  app that drag instead of scrolling. Tick Alt, Ctrl or Shift, or record any key or combination
-  (e.g. Space, Ctrl+Shift). Several shortcuts can be on at once, and any of them works. A normal
-  key such as Space is also typed into the app.
-- **Test pad** (beside both tabs): scroll, middle-click and native-drag on it to see exactly what NubMouse
-  sends — wheel events and units, clicks, presses that sent no click and why, and passed-through
-  drags — without switching to another app.
-
-**General** — set once and leave:
-
-- **Devices:** all pointing devices (default), or only the ticked ones, e.g. just the TrackPoint
-  so an external mouse keeps its own middle button.
+- **Devices:** set each connected pointing device independently to **Full NubMouse** (scrolling + middle-click + drag shortcuts), **3D drag only** (leaves the middle button untouched and enables shortcut + nub drag — ideal for TEX Shura / Shinobi), or **Ignore (native)** (for external mice). Moving any device highlights it live, and **Device setup wizard…** auto-detects known TrackPoints, TEX keyboards (USB & Bluetooth LE), and external mice to suggest modes in one click.
 - **TrackPoint driver:** what the driver's Middle Button Action is set to, a **Fix it** button
   when the driver is still scrolling, the ELAN switching options, and **Open TrackPoint driver
   settings…**
@@ -225,6 +211,14 @@ sliders' ends (e.g. speed up to 100). It has two tabs.
 - **Troubleshooting and about:** the version, where settings are saved, **Start a debug log** /
   **Open debug log** (no restart with `debug` needed), and links to this page and to report a
   problem.
+
+**Scroll & click** (second tab) — everything you tune by feel:
+
+- **Configuring (per-device profiles):** choose **All devices (default)** or any individual pointing device to give it its own custom speed, axis lock, indicator, middle-click, or native-drag settings (with **Use default** to revert back to inheriting global defaults).
+- **Scrolling:** **Take over middle button for scrolling** (on by default for non-TEX devices, off by default for TEX / firmware-scroll keyboards), vertical and horizontal speed, natural direction, notched scrolling, **Lock to one direction** and its **Stickiness** (a slider from 1.2× to 4.0× plus Fixed, with Loose, Normal, Firm and Fixed presets marked under it; click a name to jump to it), and the **scroll-direction indicator** (4 styles and 16–64 px sizes with live preview; placing it beside the pointer is under **Advanced**).
+- **Middle click:** deadzone, click time limit, and autoscroll cancelling.
+- **Native drag (for 3D modeling apps):** Blender, CAD and other 3D apps rotate and pan by dragging with the middle button. On non-TEX devices, native drag is **disabled by default** until you tick a quick key (`Alt`, `Ctrl`, `Shift`), a combo (`Ctrl+Alt`, `Alt+Shift`, `Ctrl+Shift`), or record a custom shortcut — then hold that shortcut + press the middle button to pass a real middle-button drag straight through. On **TEX / firmware-scroll keyboards**, **Drag without middle button** is enabled by default with `Ctrl+Alt` so holding `Ctrl+Alt` + moving the nub gives smooth 360° middle-drag without touching `M_FN` (an **Advanced** option also lets you convert `M_FN` firmware scroll + a shared or separate hotkey into drag).
+- **Test pad** (beside both tabs): shows which **Input device** (and mode/profile) is currently driving the pad, and displays live wheel events, middle clicks, cancelled presses, and passed-through drags without switching apps.
 
 ### Hidden mode
 
@@ -338,12 +332,21 @@ cd NubMouse
 That writes `dist\NubMouse.exe`. `.\build.ps1 -Version 1.2.3` stamps a version into the
 file properties (the updater compares these).
 
-### Audit & install with an AI coding agent
+### Prompt suggestion: audit it with your AI coding agent
 
 If you use a local coding agent (**Claude Code**, **Codex**, **Antigravity**, etc.) and would
-rather have it review the code before running an unsigned mouse-hook binary, paste this prompt:
+rather have it review the code before you run an unsigned mouse-hook binary, paste this prompt.
+It only reads the code and reports back; it doesn't run anything:
 
-> Clone https://github.com/dstarikov/NubMouse and perform a thorough security audit of the entire repository. Verify that it installs no keyboard hooks, never logs keys or window titles, makes no unexpected network calls (only optional GitHub release checks when enabled), and has no obfuscated or suspicious code. Summarize your findings clearly; if it is safe, build it locally with `.\build.ps1` and run `.\dist\NubMouse.exe --install`.
+> Clone https://github.com/dstarikov/NubMouse (or inspect the current directory if already cloned) and do a thorough security audit of the codebase, `.\build.ps1`, and the `--install` flow. Only read the code; don't run anything from the repository. Check for suspicious behavior, unexpected network access, risky dependencies, and what input the app intercepts and does with it. Explain exactly what `--install` changes on the system (and how it's reverted), citing file and line references for anything notable, and share a clear summary.
+
+If you're happy with what it finds, follow up with this to build and install it from source (which
+also skips the Windows SmartScreen warning):
+
+> Looks good. Build it with `.\build.ps1`, install it with `.\dist\NubMouse.exe --install`, then tell me what changed and how to uninstall it.
+
+An AI review is a helpful second opinion, not a guarantee. For extra safety, run your agent in a
+mode that asks before it runs commands.
 
 `.\tests\smoke.ps1` runs the built exe end to end on your machine: start, pause/resume,
 single instance, hidden icon, install, update in place while running, and uninstall. It cleans
@@ -356,6 +359,19 @@ NubMouse installs a low-level mouse hook, holds back the middle button until it 
 whether you meant a click or a scroll, pins the pointer while the button is down, and turns the
 TrackPoint's movement into wheel events. [docs/how-it-works.md](docs/how-it-works.md) has the
 details.
+
+## FAQ
+
+- **How does NubMouse compare to Linux TrackPoint scrolling and classic TPMiddle?**  
+  On **Linux** (`libinput`), TrackPoints still work this way by default today: tap the middle button to middle-click (open links in background tabs, close tabs), or hold it and push the TrackPoint to scroll. On Windows, ThinkPad drivers have historically forced a choice between *either* Scrolling *or* Middle Click — older Synaptics ThinkPads relied on classic **TPMiddle** to get both, which stopped working cleanly on modern ELAN and HID ThinkPads. NubMouse brings that out-of-the-box Linux / TPMiddle feel to modern Windows 10/11 ThinkPads via standard mouse-wheel events, switches ELAN's Middle Button Action automatically, and adds smooth scrolling, adaptive axis lock, autoscroll cancelling, per-device profiles, and optional 3D/CAD drag passthrough.
+- **How does direct middle-drag passthrough work in 3D modeling & CAD apps?**  
+  Apps like Blender, Fusion, SolidWorks, Rhino, and FreeCAD orbit and pan by dragging the middle mouse button. On a ThinkPad TrackPoint, **Native drag** starts disabled so none of your modifier keys are hijacked; pick a quick key (`Alt`, `Ctrl`, `Shift`), combo (`Ctrl+Alt`, `Alt+Shift`, `Ctrl+Shift`), or custom shortcut under **Settings → Scroll & click → Native drag**. Holding that shortcut while pressing the middle button passes a real, native middle-button drag straight through to the app.
+- **How does NubMouse work with TEX Shura / Shinobi (USB & Bluetooth)?**  
+  TEX keyboards handle `M_FN` scrolling in firmware (DIP 4 ON = tap middle-click + axis-locked firmware scroll; DIP 4 OFF = scroll-only) and cannot send a holdable middle-button press to Windows. NubMouse auto-detects the **TEX Shura** over both USB (`04D9:0532`) and Bluetooth LE (`04D9:2521`) as well as the **TEX Shinobi** (`04D9:0407`) and defaults them to **3D drag only**: middle-button takeover stays off so `M_FN` works natively, while **Drag without middle button** (`Ctrl+Alt` + move nub) gives smooth 360° middle-mouse orbiting without firmware axis locking. An optional **Advanced: convert firmware scroll to drag** setting is also available if you prefer `M_FN` + a hotkey.
+- **Can I use a ThinkPad TrackPoint, a TEX Shura, and an external mouse on the same machine?**  
+  Yes. Windows Raw Input identifies each device individually. Use **Settings → General → Devices** (or the **Device setup wizard**) to set your TrackPoint to **Full NubMouse**, your TEX Shura to **3D drag only**, and your regular mouse to **Ignore (native)** — and optionally give each device its own tuning profile in **Scroll & click → Configuring**.
+- **What about other hardware (TrackPoint Keyboard II, Dell TrackStick, HP PointStick, QMK/ZMK)?**  
+  Any pointing device that sends standard Windows mouse input works. On the **ThinkPad TrackPoint Keyboard II**, disable "ThinkPad Preferred Scrolling" in Lenovo's companion app so it sends a plain middle button. For any unrecognized device, run the **Device setup wizard**, wiggle it to highlight it, and pick its mode.
 
 ## Troubleshooting
 

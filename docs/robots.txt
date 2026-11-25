@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://dstarikov.github.io/NubMouse/sitemap.xml
