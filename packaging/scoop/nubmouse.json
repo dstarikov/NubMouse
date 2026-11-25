@@ -4,7 +4,7 @@
     "homepage": "https://github.com/dstarikov/NubMouse",
     "license": "MIT",
     "url": "https://github.com/dstarikov/NubMouse/releases/download/v0.1.0/NubMouse.exe",
-    "hash": "8ca94287d9fb71e09867628c57d8f61b7de6d1f2fe2d7bb8de18d0b9544223d7",
+    "hash": "41363f338c1c0ac26b55a93ed9e87dcf1b4acfa8ad9344ee095ccb0fd0f039d7",
     "bin": "NubMouse.exe",
     "shortcuts": [
         [
@@ -19,7 +19,7 @@
     "persist": "NubMouse.ini",
     "checkver": "github",
     "autoupdate": {
-        "url": "https://github.com/dstarikov/NubMouse/releases/download/v0.1.0/NubMouse.exe",
+        "url": "https://github.com/dstarikov/NubMouse/releases/download/v$version/NubMouse.exe",
         "hash": {
             "url": "$baseurl/SHA256SUMS.txt"
         }

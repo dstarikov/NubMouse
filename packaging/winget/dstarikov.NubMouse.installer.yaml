@@ -18,9 +18,9 @@ AppsAndFeaturesEntries:
 Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/dstarikov/NubMouse/releases/download/v0.1.0/NubMouse.exe
-    InstallerSha256: 8CA94287D9FB71E09867628C57D8F61B7DE6D1F2FE2D7BB8DE18D0B9544223D7
+    InstallerSha256: 41363F338C1C0AC26B55A93ED9E87DCF1B4ACFA8AD9344EE095CCB0FD0F039D7
   - Architecture: arm64
     InstallerUrl: https://github.com/dstarikov/NubMouse/releases/download/v0.1.0/NubMouse.exe
-    InstallerSha256: 8CA94287D9FB71E09867628C57D8F61B7DE6D1F2FE2D7BB8DE18D0B9544223D7
+    InstallerSha256: 41363F338C1C0AC26B55A93ED9E87DCF1B4ACFA8AD9344EE095CCB0FD0F039D7
 ManifestType: installer
 ManifestVersion: 1.9.0
